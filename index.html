@@ -295,15 +295,25 @@
 
         /* MOBILE OPTIMIZATION */
         @media (max-width: 600px) {
-            #main-container { padding: 40px 0; }
+            #main-container { padding: 40px 0 140px; } /* BOTTOM SAFE ZONE FOR LOGO */
             .column { min-width: 50vw; padding: 0 10px; }
-            .pulse-card { height: 70vh; flex-direction: column; text-align: center; justify-content: center; }
-            .sprite-wrapper { width: 120px; height: 120px; }
+            .pulse-card { 
+                min-height: 65vh; 
+                height: auto;
+                flex-direction: column; 
+                text-align: center; 
+                justify-content: space-between;
+                padding: 25px;
+            }
+            .sprite-wrapper { width: 100px; height: 100px; }
             .pulse-bg { opacity: 0.3; }
             #info-panel { width: 100vw; left: -100vw; }
             #info-panel.open { transform: translateX(100vw); }
             #info-toggle { top: 20px; left: 20px; font-size: 0.7em; }
+            #nexus-link { width: 100px; bottom: 20px; left: 20px; }
+            #page-title { font-size: 0.8em; letter-spacing: 5px; right: 20px; top: 20px; }
         }
+        /* FORCE_DEPLOY_SYNC_V1 */
     </style>
 </head>
 <body>
