@@ -1,5 +1,6 @@
 import time
 import os
+import threading
 import requests
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -17,7 +18,12 @@ BUFFER_PROFILE_ID = os.environ.get("BUFFER_PROFILE_ID")
 
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
-COOLDOWN_SECONDS = 300  # 5-minute cooldown for the "Echo Fix"
+COOLDOWN_SECONDS = 300  # 5-minute cooldown for the same project/activity
+DEBOUNCE_SECONDS = 2.0  # 2-second debounce for rapid file changes
+
+# Global cache to persist across observer restarts
+last_sent_cache = {}
+pending_timers = {}
 
 if not URL or not KEY:
     print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
@@ -116,11 +122,13 @@ def broadcast_to_buffer(message):
         print("Buffer broadcast script error (likely console encoding related). Check Buffer UI.")
 
 class HeartbeatHandler(FileSystemEventHandler):
-    def __init__(self):
-        super().__init__()
-        self.last_sent = {}  # Cache for the Echo Fix
-
     def on_modified(self, event):
+        self.process_event(event)
+        
+    def on_created(self, event):
+        self.process_event(event)
+
+    def process_event(self, event):
         if event.is_directory:
             return
             
@@ -130,7 +138,6 @@ class HeartbeatHandler(FileSystemEventHandler):
         if ext in WORKFLOW_MAP:
             project_name = get_project_name(file_path)
             
-            # If project_name is 'PUBLISH', try to find a better name from the path
             if project_name == "PUBLISH":
                 project_name = "General Workspace"
 
@@ -139,45 +146,62 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
             workflow = WORKFLOW_MAP[ext]
             
-            # --- THE ECHO FIX (Cooldown Logic) ---
-            cooldown_key = f"{project_name}_{workflow['label']}"
-            now = time.time()
-            if cooldown_key in self.last_sent:
-                if now - self.last_sent[cooldown_key] < COOLDOWN_SECONDS:
-                    # Silently ignore repetitive updates for the same project/activity
-                    return
+            # --- DEBOUNCE LOGIC ---
+            # Group events by project and label
+            debounce_key = f"{project_name}_{workflow['label']}"
             
-            # Update last sent timestamp
-            self.last_sent[cooldown_key] = now
-            
-            # CRITICAL TRIGGER: Trigger only when file is in a folder named 'PUBLISH'
-            path_parts = file_path.upper().split(os.sep)
-            is_milestone = "PUBLISH" in path_parts
-            
-            print(f"Activity: {project_name} ({workflow['label']})")
-            
-            data = {
-                "project_name": project_name,
-                "action_label": workflow["label"],
-                "mood_tag": workflow["mood"],
-                "source": "Windows-Workstation",
-                "is_milestone": is_milestone
-            }
-            
-            try:
-                # Sync to Supabase
-                supabase.table("studio_heartbeat").insert(data).execute()
+            if debounce_key in pending_timers:
+                pending_timers[debounce_key].cancel()
                 
-                # If milestone, broadcast to Buffer and handle storage
-                if is_milestone:
-                    msg = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
-                    broadcast_to_buffer(msg)
+            # Schedule the actual broadcast
+            timer = threading.Timer(
+                DEBOUNCE_SECONDS, 
+                self.dispatch_heartbeat, 
+                args=[project_name, workflow, file_path]
+            )
+            pending_timers[debounce_key] = timer
+            timer.start()
 
-                    if any(file_path.lower().endswith(e) for e in ['.jpg', '.jpeg', '.png']):
-                        self.upload_to_supabase_storage(file_path)
-                    
-            except Exception as e:
-                print(f"Sync error: {e}")
+    def dispatch_heartbeat(self, project_name, workflow, file_path):
+        """The actual logic that sends data to Supabase, after debouncing."""
+        cooldown_key = f"{project_name}_{workflow['label']}"
+        now = time.time()
+        
+        # --- THE ECHO FIX (Cooldown) ---
+        if cooldown_key in last_sent_cache:
+            if now - last_sent_cache[cooldown_key] < COOLDOWN_SECONDS:
+                return
+        
+        last_sent_cache[cooldown_key] = now
+        
+        # Determine milestone status
+        path_parts = file_path.upper().split(os.sep)
+        is_milestone = "PUBLISH" in path_parts
+        
+        print(f"Broadcast: {project_name} ({workflow['label']}) {'[MILESTONE]' if is_milestone else ''}")
+        
+        data = {
+            "project_name": project_name,
+            "action_label": workflow["label"],
+            "mood_tag": workflow["mood"],
+            "source": "Windows-Workstation",
+            "is_milestone": is_milestone
+        }
+        
+        try:
+            # Sync to Supabase
+            supabase.table("studio_heartbeat").insert(data).execute()
+            
+            # If milestone, broadcast to Buffer and handle storage
+            if is_milestone:
+                msg = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
+                broadcast_to_buffer(msg)
+
+                if any(file_path.lower().endswith(e) for e in ['.jpg', '.jpeg', '.png']):
+                    self.upload_to_supabase_storage(file_path)
+                
+        except Exception as e:
+            print(f"Sync error: {e}")
 
     def upload_to_supabase_storage(self, file_path):
         """Upload a milestone image to Supabase Storage."""

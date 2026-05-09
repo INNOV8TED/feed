@@ -265,7 +265,14 @@
             return card;
         }
 
+        const displayedIds = new Set();
+
         function updateUI(data) {
+            if (!data.id) return; // Should always have an ID from Supabase
+            if (displayedIds.has(data.id)) return; // Prevent "Echo" duplicate cards
+            
+            displayedIds.add(data.id);
+            
             // Update Theme
             document.body.className = getThemeClass(data.project_name);
             
@@ -275,7 +282,9 @@
             
             // Keep only last 10
             if (streamContainer.children.length > 10) {
-                streamContainer.removeChild(streamContainer.lastChild);
+                const lastCard = streamContainer.lastChild;
+                // Cleanup Set if needed (though not strictly necessary for 10 items)
+                streamContainer.removeChild(lastCard);
             }
         }
 
