@@ -2,42 +2,261 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>IN-NO-V8 Live Status</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IN-NO-V8 Live Status | Studio Pulse</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Outfit:wght@300;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #status-card { border: 1px solid #0f0; padding: 20px; box-shadow: 0 0 10px #0f0; }
-        .pulse { animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        :root {
+            --bg-color: #0a0a0a;
+            --text-color: #e0e0e0;
+            --accent-color: #00ff88;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --font-main: 'Inter', sans-serif;
+            --font-display: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        /* LANNA THEME */
+        .theme-lanna {
+            --bg-color: #1a0f0a;
+            --text-color: #f5e6d3;
+            --accent-color: #d4af37; /* Gold */
+            --card-bg: rgba(212, 175, 55, 0.05);
+            --border-color: rgba(212, 175, 55, 0.2);
+            --font-display: 'Inter', serif;
+        }
+
+        /* A-CAM THEME */
+        .theme-acam {
+            --bg-color: #050a0f;
+            --text-color: #d1f7ff;
+            --accent-color: #00d9ff; /* Cyan */
+            --card-bg: rgba(0, 217, 255, 0.05);
+            --border-color: rgba(0, 217, 255, 0.2);
+            --font-display: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-main);
+            margin: 0;
+            padding: 0;
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        header {
+            width: 100%;
+            padding: 40px 20px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            background: linear-gradient(to bottom, rgba(0,0,0,0.3), transparent);
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin: 0;
+            text-transform: uppercase;
+            font-size: 1.2rem;
+            color: var(--accent-color);
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            padding: 40px 20px;
+            box-sizing: border-box;
+        }
+
+        .pulse-stream {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .pulse-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            backdrop-filter: blur(10px);
+            animation: slideIn 0.5s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pulse-card.milestone {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+        }
+
+        .sprite {
+            width: 64px;
+            height: 64px;
+            flex-shrink: 0;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .sprite-default { background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'); }
+        .sprite-lanna { background-image: url('lanna_sprite.png'); }
+        .sprite-acam { background-image: url('acam_sprite.png'); }
+
+        .details {
+            flex-grow: 1;
+        }
+
+        .action-label {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0 0 4px 0;
+            display: block;
+        }
+
+        .project-name {
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+        }
+
+        .timestamp {
+            font-size: 0.75rem;
+            opacity: 0.4;
+            margin-top: 8px;
+        }
+
+        .badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: var(--accent-color);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 10px var(--accent-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
-    <div id="status-card">
-        <div>SYSTEM STATUS: <span class="pulse">ONLINE</span></div>
-        <h2 id="action">Initializing...</h2>
-        <p id="project">Waiting for heartbeat...</p>
+    <header>
+        <div id="live-indicator">
+            <span class="status-dot"></span>
+            <h1>Studio Pulse</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="pulse-stream" class="pulse-stream">
+            <!-- Pulses will appear here -->
+        </div>
     </div>
 
     <script>
-        // Use the values you put in Vercel Environment Variables
         // REPLACE THESE WITH YOUR ACTUAL KEYS OR USE ENVIRONMENT VARIABLES
-        const supabaseUrl = 'YOUR_SUPABASE_URL';
-        const supabaseKey = 'YOUR_SUPABASE_KEY'; 
+        const supabaseUrl = 'https://dzgyqrnmsnhqaiqthzok.supabase.co';
+        const supabaseKey = 'sb_publishable_TZOHRPfCaaV1AyIVErNknw_IzEsmhtQ'; 
         const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
-        async function updateDisplay(data) {
-            document.getElementById('action').innerText = data.action_label;
-            document.getElementById('project').innerText = `Current Project: ${data.project_name}`;
+        const streamContainer = document.getElementById('pulse-stream');
+
+        function getThemeClass(projectName) {
+            const name = projectName.toUpperCase();
+            if (name.includes('LANNA')) return 'theme-lanna';
+            if (name.includes('A-CAM')) return 'theme-acam';
+            return '';
         }
 
-        // 1. Get Initial State
-        supabaseClient.from('studio_heartbeat').select('*').order('id', { ascending: false }).limit(1)
-            .then(({data}) => { if(data[0]) updateDisplay(data[0]); });
+        function getSpriteClass(projectName) {
+            const name = projectName.toUpperCase();
+            if (name.includes('LANNA')) return 'sprite-lanna';
+            if (name.includes('A-CAM')) return 'sprite-acam';
+            return 'sprite-default';
+        }
 
-        // 2. Listen for Real-time pings from your PC
+        function createPulseCard(data) {
+            const card = document.createElement('div');
+            card.className = `pulse-card ${data.is_milestone ? 'milestone' : ''}`;
+            
+            const time = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            card.innerHTML = `
+                <div class="sprite ${getSpriteClass(data.project_name)}"></div>
+                <div class="details">
+                    <span class="action-label">${data.action_label}</span>
+                    <span class="project-name">${data.project_name}</span>
+                    <div class="timestamp">${time}</div>
+                </div>
+                ${data.is_milestone ? '<div class="badge">Milestone</div>' : ''}
+            `;
+            
+            return card;
+        }
+
+        function updateUI(data) {
+            // Update Theme
+            document.body.className = getThemeClass(data.project_name);
+            
+            // Add new card to top
+            const newCard = createPulseCard(data);
+            streamContainer.prepend(newCard);
+            
+            // Keep only last 10
+            if (streamContainer.children.length > 10) {
+                streamContainer.removeChild(streamContainer.lastChild);
+            }
+        }
+
+        // 1. Get Initial History
+        supabaseClient.from('studio_heartbeat').select('*').order('id', { ascending: false }).limit(10)
+            .then(({data}) => { 
+                if(data && data.length > 0) {
+                    data.reverse().forEach(pulse => updateUI(pulse));
+                }
+            });
+
+        // 2. Listen for Real-time pings
         supabaseClient.channel('public:studio_heartbeat')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'studio_heartbeat' }, payload => {
-                updateDisplay(payload.new);
+                updateUI(payload.new);
             }).subscribe();
     </script>
 </body>
