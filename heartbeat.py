@@ -155,14 +155,29 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # Sync to Supabase
                 supabase.table("studio_heartbeat").insert(data).execute()
                 
-                # If milestone, broadcast to social media
-                # if is_milestone:
-                #     # Specific message format
-                #     broadcast_message = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
-                #     broadcast_to_buffer(broadcast_message)
+                # If milestone, check if it's an image and upload to storage
+                if is_milestone and any(file_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
+                    self.upload_to_supabase_storage(file_path)
                     
             except Exception as e:
                 print(f"Sync error: {e}")
+
+    def upload_to_supabase_storage(self, file_path):
+        """Upload a milestone image to Supabase Storage."""
+        filename = os.path.basename(file_path)
+        # Create a unique path in the bucket using the timestamp
+        storage_path = f"{int(time.time())}_{filename}"
+        
+        try:
+            with open(file_path, "rb") as f:
+                supabase.storage.from_("studio-assets").upload(
+                    path=storage_path,
+                    file=f,
+                    file_options={"content-type": f"image/{filename.split('.')[-1]}"}
+                )
+            print(f"Uploaded to Studio Assets: {storage_path}")
+        except Exception as e:
+            print(f"Storage upload error: {e}")
 
 if __name__ == "__main__":
     while True:
