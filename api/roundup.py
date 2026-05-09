@@ -70,10 +70,13 @@ class handler(BaseHTTPRequestHandler):
             regular_images = []
             
             for f in files:
-                if any(f['name'].lower().endswith(ext) for ext in ['.jpg', '.png', '.jpeg']):
-                    url = supabase.storage.from_("studio-assets").get_public_url(f['name'])
-                    if f['name'].upper().startswith("HERO_"):
+                name = f['name']
+                if any(name.lower().endswith(ext) for ext in ['.jpg', '.png', '.jpeg']):
+                    url = supabase.storage.from_("studio-assets").get_public_url(name)
+                    if name.upper().startswith("HERO_"):
                         hero_images.append(url)
+                    elif name.upper().startswith("MAG_"):
+                        regular_images.insert(0, url) # Magazines are essential filler
                     else:
                         regular_images.append(url)
             
@@ -97,9 +100,17 @@ class handler(BaseHTTPRequestHandler):
             bg_image = None
 
         # 4. Assemble Collage
-        canvas = Image.new("RGBA", (WIDTH, HEIGHT), (15, 15, 20, 255))
+        canvas = Image.new("RGBA", (WIDTH, HEIGHT), (10, 10, 15, 255))
+        draw = ImageDraw.Draw(canvas)
         
-        # 4a. Draw Base
+        # 4a. Draw Cinematic Fallback Gradient (Top to Bottom)
+        for i in range(HEIGHT):
+            r = int(10 + (20 - 10) * i / HEIGHT)
+            g = int(10 + (25 - 10) * i / HEIGHT)
+            b = int(15 + (35 - 15) * i / HEIGHT)
+            draw.line([(0, i), (WIDTH, i)], fill=(r, g, b, 255))
+
+        # 4b. Draw Base Image
         if bg_image:
             scale = max(WIDTH/bg_image.width, HEIGHT/bg_image.height)
             bg_image = bg_image.resize((int(bg_image.width*scale), int(bg_image.height*scale)))
