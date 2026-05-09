@@ -158,6 +158,25 @@
         }
 
         .latest-pulse .heartbeat-light { display: block; }
+        
+        /* POWER DOWN STATE */
+        .status-sleeping {
+            filter: grayscale(1) opacity(0.3) blur(2px) !important;
+            transition: all 2s ease;
+        }
+        
+        #system-status-msg {
+            position: fixed;
+            bottom: 40px; right: 40px;
+            font-family: 'Space Mono';
+            font-size: 0.7em;
+            color: var(--accent-color);
+            opacity: 0.5;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            z-index: 100;
+            display: none;
+        }
 
         @keyframes pulse-glow {
             0% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px var(--accent-color); }
@@ -422,6 +441,8 @@
         </div>
     </div>
 
+    <div id="system-status-msg">[SYSTEM] Studio Powered Down. Stephen is recharging.</div>
+
     <div id="main-container">
         <div id="stream"></div>
     </div>
@@ -534,10 +555,37 @@
 
         const displayedPulseIds = new Set();
 
+        // SILENCE DETECTION (Studio Closed Mode)
+        let lastPulseTime = Date.now();
+
+        function checkStudioSilence() {
+            const now = Date.now();
+            const minutesSinceActivity = (now - lastPulseTime) / (1000 * 60);
+            
+            const latestCard = document.querySelector('.latest-pulse .pulse-card');
+            const statusMsg = document.getElementById('system-status-msg');
+            const statusIndicator = document.querySelector('#info-panel div:last-child');
+
+            if (minutesSinceActivity >= 30) {
+                // STUDIO POWERED DOWN
+                if (latestCard) latestCard.querySelector('.sprite-wrapper').classList.add('status-sleeping');
+                statusMsg.style.display = 'block';
+                if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: STANDBY ]<br>[ SYNC_LEVEL: LOW ]';
+            } else {
+                // STUDIO ACTIVE
+                if (latestCard) latestCard.querySelector('.sprite-wrapper').classList.remove('status-sleeping');
+                statusMsg.style.display = 'none';
+                if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: ACTIVE ]<br>[ SYNC_LEVEL: OPTIMAL ]';
+            }
+        }
+
+        setInterval(checkStudioSilence, 30000); // Check every 30 seconds
+
         function updateUI(data, isInitial = false) {
             if (!data.id) return;
+            lastPulseTime = new Date(data.created_at || Date.now()).getTime();
             
-            // IF CARD ALREADY EXISTS, JUST UPDATE THE IMAGE
+            // IF CARD ALREADY EXISTS...
             const existingCard = document.querySelector(`[data-pulse-id="${data.id}"]`);
             if (existingCard) {
                 const parts = (data.mood_tag || '').split('|');
