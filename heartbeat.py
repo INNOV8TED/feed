@@ -3,6 +3,8 @@ import os
 import threading
 import requests
 import pyautogui
+import traceback
+import json
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
@@ -19,9 +21,9 @@ BUFFER_PROFILE_ID = os.environ.get("BUFFER_PROFILE_ID")
 
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
-IGNORE_FILES = ["heartbeat.log", "heartbeat.lock"]
-COOLDOWN_SECONDS = 300  # 5-minute cooldown for the same project/activity
-DEBOUNCE_SECONDS = 2.0  # 2-second debounce for rapid file changes
+IGNORE_FILES = ["heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg"]
+COOLDOWN_SECONDS = 5  # Reduced cooldown
+DEBOUNCE_SECONDS = 5.0  # Increased debounce for stable logging
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
@@ -314,9 +316,10 @@ def capture_screenshot():
                 broadcast_to_buffer(msg)
                 
         except Exception as e:
+            err_msg = traceback.format_exc()
             print(f">>> [SYNC ERROR] {e}")
             with open("heartbeat.log", "a", encoding='utf-8') as f:
-                f.write(f"[{time.ctime()}] Sync Error: {e}\n")
+                f.write(f"[{time.ctime()}] Sync Error Traceback:\n{err_msg}\n")
 
     def upload_to_supabase_storage(self, file_path):
         """Upload a milestone image to Supabase Storage."""

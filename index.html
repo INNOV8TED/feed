@@ -296,48 +296,46 @@
         /* MOBILE OPTIMIZATION */
         @media (max-width: 600px) {
             #main-container { 
-                padding: 15vh 0 25vh; 
-                overflow-x: auto; 
-                display: block; 
+                height: 100vh;
+                padding: 0;
+                display: flex;
+                align-items: center; /* PERFECT VERTICAL CENTER */
+                overflow-x: auto;
+                overflow-y: hidden;
             }
             #stream { 
-                height: auto; 
-                padding: 0 5vw; 
-                align-items: flex-start;
+                height: 60vh; /* FIXED HEIGHT FOR BALANCED LOOK */
+                padding: 0 10vw;
+                display: flex;
+                align-items: center;
+                gap: 40px;
             }
             .column { 
-                min-width: 85vw; 
-                padding: 0 10px; 
-                height: auto; 
-                justify-content: flex-start;
+                min-width: 80vw; 
+                height: 100%;
                 display: flex;
+                flex-direction: column;
+                justify-content: center;
             }
             .pulse-card { 
-                width: 100%;
-                min-height: 45vh; 
-                height: auto;
+                height: 100%;
                 flex-direction: column; 
                 text-align: left; 
-                justify-content: flex-start;
-                padding: 25px;
-                gap: 15px;
+                justify-content: space-between;
+                padding: 30px;
             }
-            .sprite-wrapper { width: 80px; height: 80px; flex-shrink: 0; }
+            .sprite-wrapper { width: 90px; height: 90px; }
             .pulse-bg { opacity: 0.35; }
-            #info-panel { width: 100vw; left: -100vw; z-index: 3000; }
-            #info-panel.open { transform: translateX(100vw); }
-            #info-toggle { top: 25px; left: 25px; font-size: 0.7em; z-index: 2500; }
-            #nexus-link { width: 100px; bottom: 25px; left: 25px; z-index: 2500; }
+            #info-toggle { top: 30px; left: 30px; font-size: 0.75em; }
+            #nexus-link { width: 110px; bottom: 30px; left: 30px; }
             #page-title { 
                 position: fixed; 
-                top: 30px; right: 25px; 
-                font-size: 0.6em; 
-                letter-spacing: 4px; 
-                z-index: 2500;
-                pointer-events: none;
+                top: 35px; right: 30px; 
+                font-size: 0.65em; 
+                letter-spacing: 5px; 
             }
         }
-        /* FORCE_DEPLOY_SYNC_V5 */
+        /* FORCE_DEPLOY_SYNC_V6 */
     </style>
 </head>
 <body>
