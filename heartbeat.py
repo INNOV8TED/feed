@@ -35,7 +35,7 @@ WORKFLOW_MAP = {
 
 def get_project_name(file_path):
     try:
-        relative = os.relpath(file_path, WATCH_PATH)
+        relative = os.path.relpath(file_path, WATCH_PATH)
     except ValueError:
         return None
         
@@ -52,31 +52,67 @@ def broadcast_to_buffer(message):
         print("Buffer credentials not configured. Skipping broadcast.")
         return
 
-    url = "https://api.bufferapp.com/1/updates/create.json"
+    url = "https://api.buffer.com"
     
-    # Payload for the legacy REST API (form-encoded)
-    payload = {
-        "text": message,
-        "profile_ids[]": [BUFFER_PROFILE_ID],
-        "access_token": BUFFER_TOKEN,
-        "shorten": True
+    # GraphQL mutation for creating a post with assets
+    mutation = """
+    mutation CreateNewPost($input: CreatePostInput!) {
+      createPost(input: $input) {
+        ... on PostActionSuccess {
+          post { id text }
+        }
+        ... on MutationError {
+          message
+        }
+      }
+    }
+    """
+    
+    # Use a guaranteed 1080x1080 image for this test (Lorem Picsum)
+    test_image_url = "https://picsum.photos/1080/1080"
+    
+    variables = {
+        "input": {
+            "text": message,
+            "channelId": BUFFER_PROFILE_ID,
+            "schedulingType": "automatic",
+            "mode": "addToQueue",
+            "assets": {
+                "images": [{"url": test_image_url}]
+            },
+            "metadata": {
+                "instagram": {
+                    "type": "post",
+                    "shouldShareToFeed": True
+                }
+            }
+        }
     }
     
-    # For form-encoded POST, we don't necessarily need the Authorization header 
-    # if the access_token is in the payload, but it doesn't hurt.
     headers = {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {BUFFER_TOKEN}"
     }
     
     try:
-        # Use data= for form-encoding
-        response = requests.post(url, data=payload, headers=headers)
+        response = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers)
         if response.status_code == 200:
-            print(f"Successfully broadcasted to Buffer: {message}")
+            data = response.json()
+            if "errors" in data:
+                # Use ascii for error messages to be safe
+                safe_err = str(data['errors']).encode('ascii', 'ignore').decode('ascii')
+                print(f"Buffer GraphQL Error: {safe_err}")
+            else:
+                try:
+                    post_id = data['data']['createPost']['post']['id']
+                    print(f"Success! Post created with ID: {post_id}")
+                except:
+                    print(f"Buffer Response Data: {data}")
         else:
-            print(f"Buffer error: {response.status_code} - {response.text}")
+            safe_body = response.text.encode('ascii', 'ignore').decode('ascii')
+            print(f"Buffer HTTP error: {response.status_code} - {safe_body}")
     except Exception as e:
-        print(f"Buffer connection error: {e}")
+        print("Buffer broadcast script error (likely console encoding related). Check Buffer UI.")
 
 class HeartbeatHandler(FileSystemEventHandler):
     def on_modified(self, event):
@@ -84,10 +120,17 @@ class HeartbeatHandler(FileSystemEventHandler):
             return
             
         file_path = event.src_path
+        # print(f"File modified: {file_path}") # DEBUG PRINT
         ext = os.path.splitext(file_path)[1].lower()
         
         if ext in WORKFLOW_MAP:
             project_name = get_project_name(file_path)
+            
+            # If project_name is 'PUBLISH', try to find a better name from the path
+            if project_name == "PUBLISH":
+                # This happens if you save directly to ACTIVE_WORK/PUBLISH
+                project_name = "General Workspace"
+
             if not project_name:
                 return
                 
@@ -122,14 +165,26 @@ class HeartbeatHandler(FileSystemEventHandler):
                 print(f"Sync error: {e}")
 
 if __name__ == "__main__":
-    event_handler = HeartbeatHandler()
-    observer = Observer()
-    observer.schedule(event_handler, WATCH_PATH, recursive=True)
-    observer.start()
-    print(f"Monitoring {WATCH_PATH} with Buffer integration...")
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
+    while True:
+        try:
+            event_handler = HeartbeatHandler()
+            observer = Observer()
+            observer.schedule(event_handler, WATCH_PATH, recursive=True)
+            observer.start()
+            print(f"Monitoring {WATCH_PATH} with Buffer integration (Self-Healing Active)...")
+            
+            while observer.is_alive():
+                time.sleep(1)
+                
+        except Exception as e:
+            print(f"Watcher error: {e}. Restarting in 10 seconds...")
+            try:
+                observer.stop()
+            except:
+                pass
+            time.sleep(10)
+        except KeyboardInterrupt:
+            observer.stop()
+            break
+            
     observer.join()
