@@ -140,6 +140,17 @@
             filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
         }
 
+        .sprite-focused { background-image: url('stephen_focus.png'); }
+        .sprite-creative { background-image: url('stephen_hacker.png'); }
+        .sprite-artistic { background-image: url('stephen_artist.png'); }
+        .sprite-success { background-image: url('stephen_celebration.png'); }
+        .sprite-lanna_special { background-image: url('stephen_lanna.png'); }
+        .sprite-musician { background-image: url('stephen_synth.png'); }
+        .sprite-burlesque { background-image: url('stephen_burlesque.png'); }
+        .sprite-deer { background-image: url('stephen_deer.png'); }
+        .sprite-podcast { background-image: url('stephen_podcast.png'); }
+        .sprite-focus { background-image: url('stephen_focus.png'); }
+
         .sprite-glitch {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -298,11 +309,18 @@
             return card;
         }
 
-        const displayedPulseIds = new Set();
+        const displayedPulseFingerprints = new Set();
 
         function updateUI(data, isInitial = false) {
-            if (!data.id || displayedPulseIds.has(data.id)) return;
-            displayedPulseIds.add(data.id);
+            if (!data.id) return;
+            
+            // Deduplicate by Fingerprint: Project + Action + Rounded Time (to the minute)
+            const timeObj = new Date(data.created_at || Date.now());
+            const roundedTime = timeObj.toISOString().substring(0, 16); 
+            const fingerprint = `${data.project_name}|${data.action_label}|${roundedTime}`;
+            
+            if (displayedPulseFingerprints.has(fingerprint)) return;
+            displayedPulseFingerprints.add(fingerprint);
             
             document.body.className = getThemeClass(data.project_name);
             
