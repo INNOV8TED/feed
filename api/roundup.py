@@ -124,6 +124,8 @@ class handler(BaseHTTPRequestHandler):
                     canvas.paste(img, (random.randint(-WIDTH//2, WIDTH), random.randint(-HEIGHT//2, HEIGHT)), img)
                 except:
                     continue
+        except Exception as e:
+            print(f"Image processing failed: {e}")
 
         # 5. Dynamic Stephen Sprite Selection
         sprite_map = {
