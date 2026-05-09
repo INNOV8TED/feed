@@ -2,6 +2,7 @@ import time
 import os
 import threading
 import requests
+import pyautogui
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
@@ -190,50 +191,75 @@ class HeartbeatHandler(FileSystemEventHandler):
             pending_timers[debounce_key] = timer
             timer.start()
 
+# --- HELPER FUNCTIONS ---
+QUOTES = [
+    "Plans are nothing; planning is everything. – Eisenhower",
+    "Creativity is intelligence having fun. – Einstein",
+    "Simplicity is the ultimate sophistication. – Da Vinci",
+    "Design is not just what it looks like and feels like. Design is how it works. – Jobs",
+    "The best way to predict the future is to create it. – Peter Drucker",
+    "Make it simple, but significant. – Don Draper",
+    "Creativity is a wild mind and a disciplined eye. – Dorothy Parker"
+]
+
+def get_random_quote():
+    return QUOTES[int(time.time()) % len(QUOTES)]
+
+def capture_screenshot():
+    """Captures the current workstation screen as a 'Live Interface' snapshot."""
+    try:
+        screenshot = pyautogui.screenshot()
+        # Downscale for performance
+        screenshot = screenshot.resize((1280, 720))
+        filename = f"screenshot_{int(time.time())}.jpg"
+        screenshot.save(filename, "JPEG", quality=70)
+        return filename
+    except Exception as e:
+        print(f"Screenshot capture failed: {e}")
+        return None
+
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
         
-        # DEBOUNCE & COOLDOWN (Tuned for responsiveness)
+        # DEBOUNCE & COOLDOWN
         cooldown_key = f"{project_name}_{workflow['label']}"
         current_time = time.time()
         if cooldown_key in last_sent_cache:
-            if current_time - last_sent_cache[cooldown_key] < 30: # 30s cooldown
+            if current_time - last_sent_cache[cooldown_key] < 30:
                 return
         
         last_sent_cache[cooldown_key] = current_time
         
         ext = os.path.splitext(file_path)[1].lower()
         
-        # SOFTWARE DETECTION
-        software_map = {
-            ".prproj": "Premiere Pro",
-            ".psd": "Photoshop",
-            ".aep": "After Effects",
-            ".wav": "Ableton Live",
-            ".mp4": "Media Encoder",
-            ".mov": "DaVinci Resolve",
-            ".png": "Graphic Engine",
-            ".jpg": "Graphic Engine"
-        }
-        software = software_map.get(ext, "Creative Engine")
+        # 1. CAPTURE LIVE INTERFACE (Screenshot)
+        asset_file = capture_screenshot()
+        
+        # Fallback to latest image if screenshot fails
+        if not asset_file:
+            try:
+                parent_dir = os.path.dirname(file_path)
+                images = [os.path.join(parent_dir, f) for f in os.listdir(parent_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
+                if images:
+                    asset_file = max(images, key=os.path.getmtime)
+            except: pass
 
-        # CAPTURE RECENT ASSET
+        # 2. UPLOAD TO SUPABASE STORAGE
         asset_url = None
-        try:
-            parent_dir = os.path.dirname(file_path)
-            images = [os.path.join(parent_dir, f) for f in os.listdir(parent_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
-            if images:
-                latest_image = max(images, key=os.path.getmtime)
-                # Upload to Supabase Storage
-                with open(latest_image, 'rb') as f:
-                    file_ext = os.path.splitext(latest_image)[1]
+        if asset_file:
+            try:
+                with open(asset_file, 'rb') as f:
+                    file_ext = os.path.splitext(asset_file)[1]
                     storage_path = f"pulses/{int(time.time())}{file_ext}"
                     supabase.storage.from_('studio-assets').upload(storage_path, f.read())
                     asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-        except Exception as e:
-            print(f"Asset capture failed: {e}")
+                # Cleanup local screenshot
+                if "screenshot_" in asset_file and os.path.exists(asset_file):
+                    os.remove(asset_file)
+            except Exception as e:
+                print(f"Asset upload failed: {e}")
 
-        # GENERATE NARRATIVE
+        # 3. GENERATE NARRATIVE & QUOTE
         mood = workflow['mood']
         narratives = {
             "focused": ["Neural link stable. Processing assets...", "Deep in the flow state.", "Optimizing production pipeline."],
@@ -243,22 +269,30 @@ class HeartbeatHandler(FileSystemEventHandler):
             "musical": ["Harmonizing frequencies.", "Synthesizer link established.", "Audio pipeline clear."]
         }
         sub_label = narratives.get(mood, ["Active in the studio."])[int(time.time()) % 3]
+        quote = get_random_quote()
+
+        # 4. SOFTWARE DETECTION
+        software_map = {
+            ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
+            ".wav": "Ableton Live", ".mp4": "Media Encoder", ".mov": "DaVinci Resolve",
+            ".png": "Graphic Engine", ".jpg": "Graphic Engine"
+        }
+        software = software_map.get(ext, "Creative Engine")
 
         data = {
             "project_name": project_name,
             "action_label": workflow["label"],
-            "mood_tag": f"{mood}|{sub_label}|{asset_url or ''}|{software}", # Pack software too
+            "mood_tag": f"{mood}|{sub_label}|{asset_url or ''}|{software}|{quote}", 
             "source": "Windows-Workstation",
             "is_milestone": (ext == ".mp4")
         }
         
         try:
             supabase.table("studio_heartbeat").insert(data).execute()
-            print(f"◈ Pulse Sent: {project_name} | {workflow['label']} | via {software}")
+            print(f"◈ Pulse Sent: {project_name} | {workflow['label']} | via {software} [LIVE SCREENSHOT]")
             
-            # If milestone, broadcast to Buffer
             if data["is_milestone"]:
-                msg = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
+                msg = f"🚀 Project Delivered! #{project_name} export complete. View the live pulse: feed.in-no-v8.com"
                 broadcast_to_buffer(msg)
                 
         except Exception as e:

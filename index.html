@@ -141,6 +141,58 @@
             flex: 1; /* FILL COLUMN HEIGHT */
         }
 
+        /* NEURAL LINK ACTIVE LIGHT */
+        .latest-pulse .pulse-card {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 30px rgba(0, 255, 170, 0.15);
+        }
+
+        .heartbeat-light {
+            position: absolute;
+            top: 20px; right: 20px;
+            width: 10px; height: 10px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            box-shadow: 0 0 15px var(--accent-color);
+            animation: pulse-glow 2s infinite;
+            display: none;
+        }
+
+        .latest-pulse .heartbeat-light { display: block; }
+
+        @keyframes pulse-glow {
+            0% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px var(--accent-color); }
+            50% { transform: scale(1.5); opacity: 0.5; box-shadow: 0 0 30px var(--accent-color); }
+            100% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px var(--accent-color); }
+        }
+
+        /* MILESTONE BADGE */
+        .milestone-badge {
+            position: absolute;
+            top: 0; left: 0;
+            background: var(--accent-color);
+            color: #000;
+            font-family: 'Space Mono';
+            font-weight: 800;
+            font-size: 0.6em;
+            padding: 5px 15px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            z-index: 10;
+        }
+
+        /* QUOTE DISPLAY */
+        .daily-spark {
+            font-style: italic;
+            opacity: 0.4;
+            font-size: 0.8em;
+            margin-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding-top: 15px;
+            line-height: 1.4;
+            color: var(--accent-color);
+        }
+
         /* NEXUS BUTTON */
         #nexus-link {
             position: fixed;
@@ -347,13 +399,16 @@
             const subLabel = parts[1] || 'Neural link stable.';
             const imageUrl = parts[2] || '';
             const software = parts[3] || 'Creative Engine';
+            const quote = parts[4] || '';
 
             const timeStr = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
             const card = document.createElement('div');
             card.className = 'pulse-card';
             card.innerHTML = `
-                <div class="pulse-bg" style="background-image: url('${imageUrl}'); opacity: ${imageUrl ? 0.25 : 0}"></div>
+                <div class="heartbeat-light"></div>
+                ${data.is_milestone ? '<div class="milestone-badge">Project Delivered</div>' : ''}
+                <div class="pulse-bg" style="background-image: url('${imageUrl}'); opacity: ${imageUrl ? 0.35 : 0}"></div>
                 <div class="sprite-wrapper">
                     <div class="sprite ${getSpriteClass(data)}"></div>
                 </div>
@@ -367,6 +422,7 @@
                     <div style="font-size: 0.65em; opacity: 0.3; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; font-family: 'Space Mono';">
                         Engine: ${software}
                     </div>
+                    ${quote ? `<div class="daily-spark">"${quote}"</div>` : ''}
                 </div>
             `;
             return card;
@@ -402,6 +458,9 @@
             
             document.body.className = getThemeClass(data.project_name);
             
+            // Remove 'latest' class from previous latest
+            document.querySelectorAll('.latest-pulse').forEach(el => el.classList.remove('latest-pulse'));
+
             // 1. Add Date Divider if needed
             if (lastDateString !== dateStr) {
                 const divider = createDateDivider(dateStr);
@@ -413,7 +472,7 @@
             // 2. Manage Masonry Columns
             if (!currentColumn || pulseInColumn >= 2) {
                 currentColumn = document.createElement('div');
-                currentColumn.className = 'column';
+                currentColumn.className = 'column latest-pulse'; // Mark new column as latest
                 streamContainer.prepend(currentColumn);
                 pulseInColumn = 0;
             }
