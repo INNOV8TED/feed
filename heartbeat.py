@@ -18,6 +18,7 @@ BUFFER_PROFILE_ID = os.environ.get("BUFFER_PROFILE_ID")
 
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
+IGNORE_FILES = ["heartbeat.log", "heartbeat.lock"]
 COOLDOWN_SECONDS = 300  # 5-minute cooldown for the same project/activity
 DEBOUNCE_SECONDS = 2.0  # 2-second debounce for rapid file changes
 
@@ -152,8 +153,16 @@ class HeartbeatHandler(FileSystemEventHandler):
             return
             
         file_path = event.src_path
+        filename = os.path.basename(file_path)
         ext = os.path.splitext(file_path)[1].lower()
         
+        if filename in IGNORE_FILES:
+            return
+            
+        # DEBUG LOGGING
+        with open("heartbeat.log", "a") as f:
+            f.write(f"[{time.ctime()}] Event: {event.event_type} | Path: {file_path}\n")
+
         if ext in WORKFLOW_MAP:
             project_name = get_project_name(file_path)
             
@@ -183,41 +192,60 @@ class HeartbeatHandler(FileSystemEventHandler):
 
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
-        cooldown_key = f"{project_name}_{workflow['label']}"
-        now = time.time()
         
-        # --- THE ECHO FIX (Cooldown) ---
-        if cooldown_key in last_sent_cache:
-            if now - last_sent_cache[cooldown_key] < COOLDOWN_SECONDS:
+        # DEBOUNCE & COOLDOWN
+        current_time = time.time()
+        if project_name in last_sent_cache:
+            if current_time - last_sent_cache[project_name] < COOLDOWN_SECONDS:
                 return
         
-        last_sent_cache[cooldown_key] = now
+        last_sent_cache[project_name] = current_time
         
-        # Determine milestone status
-        path_parts = file_path.upper().split(os.sep)
-        is_milestone = "PUBLISH" in path_parts
+        ext = os.path.splitext(file_path)[1].lower()
         
-        print(f"Broadcast: {project_name} ({workflow['label']}) {'[MILESTONE]' if is_milestone else ''}")
-        
+        # CAPTURE RECENT ASSET (Find latest image in the folder)
+        asset_url = None
+        try:
+            parent_dir = os.path.dirname(file_path)
+            images = [os.path.join(parent_dir, f) for f in os.listdir(parent_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
+            if images:
+                latest_image = max(images, key=os.path.getmtime)
+                # Upload to Supabase Storage
+                with open(latest_image, 'rb') as f:
+                    file_ext = os.path.splitext(latest_image)[1]
+                    storage_path = f"pulses/{int(time.time())}{file_ext}"
+                    supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                    asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+        except Exception as e:
+            print(f"Asset capture failed: {e}")
+
+        # GENERATE NARRATIVE
+        mood = workflow['mood']
+        narratives = {
+            "focused": ["Neural link stable. Processing assets...", "Deep in the flow state.", "Optimizing production pipeline."],
+            "creative": ["Synthesizing new realities.", "Exploring visual frontiers.", "Hacking the aesthetic."],
+            "artistic": ["Refining the master stroke.", "Color grade finalized.", "Artistic vision manifesting."],
+            "success": ["Milestone reached. Export complete.", "Finalizing delivery.", "Project output successful."],
+            "musical": ["Harmonizing frequencies.", "Synthesizer link established.", "Audio pipeline clear."]
+        }
+        sub_label = narratives.get(mood, ["Active in the studio."])[int(time.time()) % 3]
+
         data = {
             "project_name": project_name,
             "action_label": workflow["label"],
-            "mood_tag": workflow["mood"],
+            "mood_tag": f"{mood}|{sub_label}|{asset_url or ''}", # Pack extra data here
             "source": "Windows-Workstation",
-            "is_milestone": is_milestone
+            "is_milestone": (ext == ".mp4")
         }
         
         try:
-            # Sync to Supabase
             supabase.table("studio_heartbeat").insert(data).execute()
+            print(f"◈ Pulse Sent: {project_name} | {workflow['label']}")
             
-            # If milestone, broadcast to Buffer and handle storage
-            if is_milestone:
+            # If milestone, broadcast to Buffer
+            if data["is_milestone"]:
                 msg = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
                 broadcast_to_buffer(msg)
-
-                if any(file_path.lower().endswith(e) for e in ['.jpg', '.jpeg', '.png']):
-                    self.upload_to_supabase_storage(file_path)
                 
         except Exception as e:
             print(f"Sync error: {e}")
