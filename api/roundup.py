@@ -161,10 +161,9 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(f"Storage Upload Failed: {e}".encode())
             return
 
-        # 7. Broadcast
         headers = {"Authorization": f"Bearer {BUFFER_TOKEN}"}
-        requests.post("https://api.buffer.com", json={
-            "query": "mutation($i:CreatePostInput!){createPost(input:$i){...on PostActionSuccess{post{id}}}}",
+        buffer_res = requests.post("https://api.buffer.com", json={
+            "query": "mutation($i:CreatePostInput!){createPost(input:$i){...on PostActionSuccess{post{id}} ...on MutationError{message}}}",
             "variables": {"i": {
                 "text": caption,
                 "channelId": BUFFER_PROFILE_ID,
@@ -173,9 +172,12 @@ class handler(BaseHTTPRequestHandler):
                 "metadata": {"instagram": {"type": "story"}}
             }}
         }, headers=headers)
+        
+        # Log for Vercel
+        print(f"Buffer Response: {buffer_res.text}")
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({"success": True, "project": dominant_project}).encode())
+        self.wfile.write(json.dumps({"success": True, "project": dominant_project, "buffer": buffer_res.json()}).encode())
         return
