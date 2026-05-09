@@ -150,10 +150,18 @@
         .sprite-deer { background-image: url('stephen_deer.png'); }
         .sprite-podcast { background-image: url('stephen_podcast.png'); }
         .sprite-focus { background-image: url('stephen_focus.png'); }
-        .sprite-hacker-pixel { background-image: url('stephen_hacker_pixel.png'); }
-        .sprite-synth-pixel { background-image: url('stephen_synth_pixel1.png'); }
-        .sprite-rand5 { background-image: url('stephen_rand5.png'); }
-        .sprite-rand6 { background-image: url('stephen_rand6.png'); }
+        
+        /* Pixel Art Sprites with Transparency Fix */
+        .sprite-hacker-pixel { background-image: url('stephen_hacker_pixel.png'); mix-blend-mode: screen; }
+        .sprite-synth-pixel { background-image: url('stephen_synth_pixel1.png'); mix-blend-mode: screen; }
+        .sprite-synth-pixel2 { background-image: url('stephen_synth_pixel2.png'); mix-blend-mode: screen; }
+        .sprite-synth-pixel3 { background-image: url('stephen_synth_pixel3.png'); mix-blend-mode: screen; }
+        .sprite-rand5 { background-image: url('stephen_rand5.png'); mix-blend-mode: screen; }
+        .sprite-rand6 { background-image: url('stephen_rand6.png'); mix-blend-mode: screen; }
+        .sprite-deer-pixel { background-image: url('stephen_deer_pixel.png'); mix-blend-mode: screen; }
+        .sprite-scarlett-pixel { background-image: url('stephen_scarlett_pixel.png'); mix-blend-mode: screen; }
+        .sprite-scarlett-pixel-full { background-image: url('stephen_scarlett_pixel_full.png'); mix-blend-mode: screen; }
+        .sprite-deer-music-pixel { background-image: url('stephen_deer_music_pixel.png'); mix-blend-mode: screen; }
 
         .sprite-glitch {
             position: absolute;
@@ -278,21 +286,29 @@
         function getSpriteClass(data) {
             const name = (data.project_name || '').toUpperCase();
             const action = (data.action_label || '').toUpperCase();
+            const id = data.id || 0;
             
-            // 1. Specialized Project Mapping
+            // Define Category Pools
+            const pools = {
+                DEER: ['sprite-deer-pixel', 'sprite-deer-music-pixel', 'sprite-deer'],
+                SCARLETT: ['sprite-scarlett-pixel', 'sprite-scarlett-pixel-full', 'sprite-burlesque'],
+                MUSIC: ['sprite-synth-pixel', 'sprite-synth-pixel2', 'sprite-synth-pixel3', 'sprite-musician'],
+                HACKER: ['sprite-hacker-pixel', 'sprite-creative', 'sprite-focused'],
+                GENERAL: ['sprite-rand5', 'sprite-rand6', 'sprite-focus']
+            };
+
+            // 1. Project-Based Routing to Pools
             if (name.includes('LANNA')) return 'sprite-lanna_special';
-            if (name.includes('SCARLETT')) return 'sprite-burlesque';
-            if (name.includes('DEER')) return 'sprite-deer';
-            if (name.includes('DFP')) return 'sprite-podcast';
+            if (name.includes('SCARLETT')) return pools.SCARLETT[id % pools.SCARLETT.length];
+            if (name.includes('DEER')) return pools.DEER[id % pools.DEER.length];
+            if (name.includes('DFP')) return pools.GENERAL[id % pools.GENERAL.length];
             
-            // 2. Workflow Specific Mapping
-            if (action.includes('EDIT')) return 'sprite-hacker-pixel'; // Use the new pixel hacker for edits
-            if (action.includes('AUDIO') || action.includes('SYNTH')) return 'sprite-synth-pixel';
+            // 2. Workflow-Based Routing to Pools
+            if (action.includes('EDIT')) return pools.HACKER[id % pools.HACKER.length];
+            if (action.includes('AUDIO') || action.includes('SYNTH')) return pools.MUSIC[id % pools.MUSIC.length];
             
-            // 3. Random Variety Pool (for everything else)
-            const randPool = ['sprite-rand5', 'sprite-rand6', 'sprite-focused', 'sprite-creative', 'sprite-artistic'];
-            const seed = data.id % randPool.length;
-            return randPool[seed];
+            // 3. Absolute Fallback
+            return pools.GENERAL[id % pools.GENERAL.length];
         }
 
         function createPulseCard(data, isInitial = false) {
