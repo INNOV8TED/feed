@@ -568,12 +568,28 @@
 
             if (minutesSinceActivity >= 30) {
                 // STUDIO POWERED DOWN
-                if (latestCard) latestCard.querySelector('.sprite-wrapper').classList.add('status-sleeping');
+                if (latestCard) {
+                    const wrapper = latestCard.querySelector('.sprite-wrapper');
+                    const spriteImg = wrapper.querySelector('img');
+                    wrapper.classList.add('status-sleeping');
+                    if (spriteImg && !spriteImg.src.includes('stephen_sleeping.png')) {
+                        spriteImg.dataset.originalSrc = spriteImg.src;
+                        spriteImg.src = 'stephen_sleeping.png';
+                    }
+                }
                 statusMsg.style.display = 'block';
                 if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: STANDBY ]<br>[ SYNC_LEVEL: LOW ]';
             } else {
                 // STUDIO ACTIVE
-                if (latestCard) latestCard.querySelector('.sprite-wrapper').classList.remove('status-sleeping');
+                if (latestCard) {
+                    const wrapper = latestCard.querySelector('.sprite-wrapper');
+                    const spriteImg = wrapper.querySelector('img');
+                    wrapper.classList.remove('status-sleeping');
+                    if (spriteImg && spriteImg.dataset.originalSrc) {
+                        spriteImg.src = spriteImg.dataset.originalSrc;
+                        delete spriteImg.dataset.originalSrc;
+                    }
+                }
                 statusMsg.style.display = 'none';
                 if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: ACTIVE ]<br>[ SYNC_LEVEL: OPTIMAL ]';
             }
