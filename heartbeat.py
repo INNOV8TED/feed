@@ -27,7 +27,7 @@ WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
-    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_"
+    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_"
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 8.0 # Seconds to wait for file system silence
@@ -279,15 +279,18 @@ class HeartbeatHandler(FileSystemEventHandler):
             }
             software = software_map.get(ext, "Creative Engine")
 
-            # 2. CAPTURE VISION / VIDEO (Synchronous)
+            # 2. CAPTURE VISION / VIDEO / AUDIO (Synchronous)
             asset_url = ""
             is_video = (ext == ".mp4")
+            is_audio = (ext in [".wav", ".mp3"])
             
-            # For MP4s, we extract a random 10s highlight clip instead of the whole file
             asset_file = None
             if is_video:
                 log_msg(f">>> [VIDEO] Extracting highlight from {os.path.basename(file_path)}...")
                 asset_file = extract_random_clip(file_path)
+            elif is_audio:
+                log_msg(f">>> [AUDIO] Generating visualizer for {os.path.basename(file_path)}...")
+                asset_file = generate_audio_visualizer(file_path)
             
             if not asset_file:
                 asset_file = capture_screenshot()
@@ -300,8 +303,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                         supabase.storage.from_('studio-assets').upload(storage_path, f.read())
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
-                    # Cleanup screenshot/clip but keep project video
-                    if ("screenshot_" in asset_file or "clip_" in asset_file) and os.path.exists(asset_file):
+                    # Cleanup temp files but keep project source
+                    if ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file) and os.path.exists(asset_file):
                         os.remove(asset_file)
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
@@ -312,7 +315,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 "action_label": workflow["label"],
                 "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
-                "is_milestone": is_video
+                "is_milestone": (is_video or is_audio)
             }
             
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
@@ -335,10 +338,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                     buffer_profile = BUFFER_PROFILE_ID_BLUE
                 
                 msg = f"🚀 Project Update: #{project_name} | {workflow['label']} complete. View live: feed.in-no-v8.com"
-                if is_video:
-                    msg = f"🔥 New Clip: #{project_name} in progress. #{software} workflow. Live feed: feed.in-no-v8.com"
+                if is_video or is_audio:
+                    media_type = "Sound" if is_audio else "Visual"
+                    msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. Live feed: feed.in-no-v8.com"
                 
-                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=is_video)
+                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True) # Always True for Buffer to handle as Video
                 
         except Exception as e:
             err_msg = traceback.format_exc()
@@ -393,6 +397,38 @@ QUOTES = [
 
 def get_random_quote():
     return QUOTES[int(time.time()) % len(QUOTES)]
+
+def generate_audio_visualizer(audio_path):
+    """Generates a random 10-second vertical waveform video from an audio file."""
+    try:
+        # 1. Get Duration
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
+        duration = float(subprocess.check_output(cmd).decode().strip())
+        
+        if duration < 12:
+            start = 0
+            t = duration
+        else:
+            start = random.uniform(2, max(2, duration - 12))
+            t = 10
+            
+        output_file = f"audio_pulse_{int(time.time())}.mp4"
+        
+        # 2. Generate Waveform Video (Vertical 1080x1920)
+        # Using a cyan neon waveform on dark background
+        cmd = [
+            'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
+            '-filter_complex', 
+            "[0:a]showwaves=s=1080x1920:mode=line:colors=0x00FFB4:draw=full[v]",
+            '-map', '[v]', '-map', '0:a',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+            '-c:a', 'aac', '-b:a', '128k', output_file
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_file
+    except Exception as e:
+        log_msg(f"[AUDIO VIS ERROR] {e}")
+        return None
 
 def extract_random_clip(video_path):
     """Extracts a random 10-second clip from an MP4 file using FFmpeg."""
