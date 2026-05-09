@@ -435,6 +435,18 @@ def capture_screenshot():
         log_msg(f"Screenshot capture failed: {e}")
         return None
 
+# --- DAILY MAINTENANCE TRIGGER ---
+def schedule_cleanup():
+    """Triggers the cleanup_studio.py script every 24 hours."""
+    try:
+        log_msg("◈ [MAINTENANCE] Running daily studio cleanup...")
+        subprocess.Popen(["python", "cleanup_studio.py"])
+    except Exception as e:
+        log_msg(f"[MAINTENANCE ERROR] {e}")
+    
+    # Reschedule for tomorrow
+    threading.Timer(86400, schedule_cleanup).start()
+
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
     log_msg("Initializing Studio Pulse Vision Pipeline...")
@@ -447,6 +459,9 @@ if __name__ == "__main__":
                 try: last_size_cache[path] = os.path.getsize(path)
                 except: pass
     log_msg(f"Primed {len(last_size_cache)} project files.")
+
+    # Start the maintenance schedule
+    schedule_cleanup()
 
     while True:
         try:
