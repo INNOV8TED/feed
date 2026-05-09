@@ -64,18 +64,25 @@ WORKFLOW_MAP = {
 }
 
 def get_project_name(file_path):
+    """Extract project name from path (e.g., .../DFP/Dr Drive Podcast/ -> Dr Drive)."""
+    parts = file_path.split(os.sep)
     try:
-        relative = os.path.relpath(file_path, WATCH_PATH)
-    except ValueError:
-        return None
+        # Detect DFP structure
+        if "DFP" in parts:
+            idx = parts.index("DFP")
+            if idx + 1 < len(parts):
+                name = parts[idx+1]
+                # Clean up "Dr Drive Podcast" to "Dr Drive"
+                return name.replace(" Podcast", "").replace(" Project", "").strip()
         
-    parts = relative.split(os.sep)
-    if len(parts) > 1:
-        project = parts[0]
-        if project in IGNORE_FOLDERS:
-            return None
-        return project
-    return "General Workspace"
+        # Fallback to relpath
+        relative = os.path.relpath(file_path, WATCH_PATH)
+        parts = relative.split(os.sep)
+        if len(parts) > 1:
+            return parts[0]
+        return "General Workspace"
+    except:
+        return "Studio Project"
 
 def broadcast_to_buffer(message):
     if not BUFFER_TOKEN or not BUFFER_PROFILE_ID or "your_buffer" in BUFFER_TOKEN:
@@ -154,15 +161,24 @@ def get_supabase_client():
 
 supabase = get_supabase_client()
 
+def log_msg(msg):
+    """Robust logging that works even in background mode."""
+    full_msg = f"[{time.ctime()}] {msg}"
+    print(full_msg)
+    try:
+        with open("heartbeat.log", "a", encoding='utf-8') as f:
+            f.write(full_msg + "\n")
+    except: pass
+
 class HeartbeatHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if not event.is_directory:
-            print(f"◈ [WATCHER] Change Detected: {os.path.basename(event.src_path)}")
+            log_msg(f"◈ [WATCHER] Change Detected: {os.path.basename(event.src_path)}")
         self.process_event(event)
         
     def on_created(self, event):
         if not event.is_directory:
-            print(f"◈ [WATCHER] Creation Detected: {os.path.basename(event.src_path)}")
+            log_msg(f"◈ [WATCHER] Creation Detected: {os.path.basename(event.src_path)}")
         self.process_event(event)
 
     def process_event(self, event):
