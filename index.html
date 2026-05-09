@@ -295,10 +295,10 @@
 
         /* MOBILE OPTIMIZATION */
         @media (max-width: 600px) {
-            #main-container { padding: 40px 0 180px; } /* MASSIVE BOTTOM SAFE ZONE */
+            #main-container { padding: 120px 0 200px; } /* TOP AND BOTTOM SAFE ZONES */
             .column { min-width: 90vw; padding: 0 15px; }
             .pulse-card { 
-                min-height: 50vh; 
+                min-height: 55vh; 
                 height: auto;
                 flex-direction: column; 
                 text-align: left; 
@@ -308,19 +308,20 @@
             }
             .sprite-wrapper { width: 90px; height: 90px; flex-shrink: 0; }
             .pulse-bg { opacity: 0.35; }
-            #info-panel { width: 100vw; left: -100vw; }
+            #info-panel { width: 100vw; left: -100vw; z-index: 3000; }
             #info-panel.open { transform: translateX(100vw); }
-            #info-toggle { top: 20px; left: 20px; font-size: 0.7em; }
-            #nexus-link { width: 120px; bottom: 30px; left: 30px; }
+            #info-toggle { top: 30px; left: 30px; font-size: 0.7em; z-index: 2500; }
+            #nexus-link { width: 120px; bottom: 30px; left: 30px; z-index: 2500; }
             #page-title { 
-                position: absolute; 
-                top: 25px; right: 25px; 
+                position: fixed; 
+                top: 35px; right: 30px; 
                 font-size: 0.7em; 
                 letter-spacing: 5px; 
-                z-index: 1000;
+                z-index: 2500;
+                pointer-events: none;
             }
         }
-        /* FORCE_DEPLOY_SYNC_V2 */
+        /* FORCE_DEPLOY_SYNC_V3 */
     </style>
 </head>
 <body>
@@ -486,10 +487,13 @@
                 currentColumn = null; // Reset column for new day
             }
 
-            // 2. Manage Masonry Columns
-            if (!currentColumn || pulseInColumn >= 2) {
+            // 2. Manage Masonry Columns (Adaptive for Mobile)
+            const isMobile = window.innerWidth <= 600;
+            const maxPulsePerColumn = isMobile ? 1 : 2;
+
+            if (!currentColumn || pulseInColumn >= maxPulsePerColumn) {
                 currentColumn = document.createElement('div');
-                currentColumn.className = 'column latest-pulse'; // Mark new column as latest
+                currentColumn.className = 'column latest-pulse';
                 streamContainer.prepend(currentColumn);
                 pulseInColumn = 0;
             }
