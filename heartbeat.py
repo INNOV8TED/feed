@@ -255,26 +255,18 @@ def capture_screenshot():
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
         
-        # DEBOUNCE & COOLDOWN
+        # COOLDOWN (Burst Mode: 5s)
         cooldown_key = f"{project_name}_{workflow['label']}"
         current_time = time.time()
         if cooldown_key in last_sent_cache:
-            if current_time - last_sent_cache[cooldown_key] < 30:
+            if current_time - last_sent_cache[cooldown_key] < 5:
                 return
         
         last_sent_cache[cooldown_key] = current_time
         
         # 1. GENERATE DATA
-        ext = os.path.splitext(file_path)[1].lower()
+        ext = os.path.splitext(file_path)[1].lower().strip()
         mood = workflow['mood']
-        narratives = {
-            "focused": ["Neural link stable. Processing assets...", "Deep in the flow state.", "Optimizing production pipeline."],
-            "creative": ["Synthesizing new realities.", "Exploring visual frontiers.", "Hacking the aesthetic."],
-            "artistic": ["Refining the master stroke.", "Color grade finalized.", "Artistic vision manifesting."],
-            "success": ["Milestone reached. Export complete.", "Finalizing delivery.", "Project output successful."],
-            "musical": ["Harmonizing frequencies.", "Synthesizer link established.", "Audio pipeline clear."]
-        }
-        sub_label = narratives.get(mood, ["Active in the studio."])[int(time.time()) % 3]
         quote = get_random_quote()
 
         software_map = {
@@ -287,19 +279,19 @@ def capture_screenshot():
         data = {
             "project_name": project_name,
             "action_label": workflow["label"],
-            "mood_tag": f"{mood}|{sub_label}||{software}|{quote}", 
+            "mood_tag": f"{mood}|Neural link active.||{software}|{quote}", 
             "source": "Windows-Workstation",
             "is_milestone": (ext == ".mp4")
         }
         
         try:
-            # 2. INSTANT SYNC (Main Thread for absolute reliability)
-            print(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
+            # 2. INSTANT SYNC
+            log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
             res = supabase.table("studio_heartbeat").insert(data).execute()
             pulse_id = res.data[0]['id']
-            print(f">>> [SYNC] SUCCESS! Pulse ID: {pulse_id}")
+            log_msg(f">>> [SYNC] SUCCESS! Pulse ID: {pulse_id}")
             
-            # 3. ASYNC IMAGING (Follow-up background task)
+            # 3. BACKGROUND IMAGING
             def bg_imaging():
                 asset_file = capture_screenshot()
                 if not asset_file:
@@ -318,12 +310,13 @@ def capture_screenshot():
                             supabase.storage.from_('studio-assets').upload(storage_path, f.read())
                             asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                             
-                            supabase.table("studio_heartbeat").update({"mood_tag": f"{mood}|{sub_label}|{asset_url}|{software}|{quote}"}).eq("id", pulse_id).execute()
-                            print(f">>> [SYNC] Telemetry Image Updated for {pulse_id}")
+                            supabase.table("studio_heartbeat").update({"mood_tag": f"{mood}|Telemetry locked.|{asset_url}|{software}|{quote}"}).eq("id", pulse_id).execute()
+                            log_msg(f">>> [SYNC] Telemetry image updated for {pulse_id}")
                         
                         if "screenshot_" in asset_file and os.path.exists(asset_file):
                             os.remove(asset_file)
-                    except: pass
+                    except Exception as e:
+                        log_msg(f">>> [IMAGING ERROR] {e}")
 
             threading.Thread(target=bg_imaging).start()
 
@@ -333,9 +326,7 @@ def capture_screenshot():
                 
         except Exception as e:
             err_msg = traceback.format_exc()
-            print(f">>> [SYNC ERROR] {e}")
-            with open("heartbeat.log", "a", encoding='utf-8') as f:
-                f.write(f"[{time.ctime()}] Sync Error Traceback:\n{err_msg}\n")
+            log_msg(f">>> [SYNC ERROR] {e}\n{err_msg}")
 
     def upload_to_supabase_storage(self, file_path):
         """Upload a milestone image to Supabase Storage."""
