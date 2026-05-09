@@ -314,10 +314,10 @@
         function updateUI(data, isInitial = false) {
             if (!data.id) return;
             
-            // Deduplicate by Fingerprint: Project + Action + Rounded Time (to the minute)
+            // Coarsen Fingerprint: Group by Action + Time (ignoring Project Name for collapsing)
             const timeObj = new Date(data.created_at || Date.now());
             const roundedTime = timeObj.toISOString().substring(0, 16); 
-            const fingerprint = `${data.project_name}|${data.action_label}|${roundedTime}`;
+            const fingerprint = `${data.action_label}|${roundedTime}`;
             
             if (displayedPulseFingerprints.has(fingerprint)) return;
             displayedPulseFingerprints.add(fingerprint);
