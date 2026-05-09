@@ -6,6 +6,7 @@ import pyautogui
 import traceback
 import json
 import subprocess
+import random
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
@@ -24,7 +25,10 @@ BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE") # Reserved for
 
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
-IGNORE_FILES = ["heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg"]
+IGNORE_FILES = [
+    "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
+    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder"
+]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 8.0 # Seconds to wait for file system silence
 
