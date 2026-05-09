@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>IN-NO-V8 Live Status</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { background: #000; color: #0f0; font-family: monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #status-card { border: 1px solid #0f0; padding: 20px; box-shadow: 0 0 10px #0f0; }
+        .pulse { animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div id="status-card">
+        <div>SYSTEM STATUS: <span class="pulse">ONLINE</span></div>
+        <h2 id="action">Initializing...</h2>
+        <p id="project">Waiting for heartbeat...</p>
+    </div>
+
+    <script>
+        // Use the values you put in Vercel Environment Variables
+        const supabaseUrl = 'https://dzgyqrnmsnhqaiqthzok.supabase.co';
+        const supabaseKey = 'YOUR_PUBLIC_ANON_KEY'; // Replace with your key for local testing, or use process.env in a build step
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        async function updateDisplay(data) {
+            document.getElementById('action').innerText = data.action_label;
+            document.getElementById('project').innerText = `Current Project: ${data.project_name}`;
+        }
+
+        // 1. Get Initial State
+        supabaseClient.from('studio_heartbeat').select('*').order('id', { ascending: false }).limit(1)
+            .then(({data}) => { if(data[0]) updateDisplay(data[0]); });
+
+        // 2. Listen for Real-time pings from your PC
+        supabaseClient.channel('public:studio_heartbeat')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'studio_heartbeat' }, payload => {
+                updateDisplay(payload.new);
+            }).subscribe();
+    </script>
+</body>
+</html>
