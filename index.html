@@ -183,13 +183,17 @@
         /* QUOTE DISPLAY */
         .daily-spark {
             font-style: italic;
-            opacity: 0.4;
-            font-size: 0.8em;
-            margin-top: 15px;
+            opacity: 0.45;
+            font-size: 0.85em;
+            margin-top: 25px;
             border-top: 1px solid rgba(255,255,255,0.05);
             padding-top: 15px;
-            line-height: 1.4;
+            line-height: 1.6;
             color: var(--accent-color);
+            max-width: 280px; /* Force wrapping to avoid avatar overlap */
+            text-align: left;
+            position: relative;
+            z-index: 6; /* Stay above background but below potential overlays */
         }
 
         /* NEXUS BUTTON */
