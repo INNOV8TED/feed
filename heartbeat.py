@@ -404,11 +404,12 @@ def extract_random_clip(video_path):
         start = random.uniform(2, max(2, duration - 12))
         output_file = f"clip_{int(time.time())}.mp4"
         
-        # 3. Extract 10s clip with fast-seek
-        # Using libx264 for compatibility and small file size
+        # 3. Extract 10s clip with vertical 1080x1920 center-crop
+        # Using libx264 for compatibility
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', '10', '-i', video_path,
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', 
+            '-vf', "scale=w=-1:h=1920,crop=1080:1920",
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', 
             '-c:a', 'aac', '-b:a', '128k', output_file
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
