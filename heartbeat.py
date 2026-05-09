@@ -17,6 +17,7 @@ BUFFER_PROFILE_ID = os.environ.get("BUFFER_PROFILE_ID")
 
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
+COOLDOWN_SECONDS = 300  # 5-minute cooldown for the "Echo Fix"
 
 if not URL or not KEY:
     print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
@@ -115,12 +116,15 @@ def broadcast_to_buffer(message):
         print("Buffer broadcast script error (likely console encoding related). Check Buffer UI.")
 
 class HeartbeatHandler(FileSystemEventHandler):
+    def __init__(self):
+        super().__init__()
+        self.last_sent = {}  # Cache for the Echo Fix
+
     def on_modified(self, event):
         if event.is_directory:
             return
             
         file_path = event.src_path
-        # print(f"File modified: {file_path}") # DEBUG PRINT
         ext = os.path.splitext(file_path)[1].lower()
         
         if ext in WORKFLOW_MAP:
@@ -128,7 +132,6 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             # If project_name is 'PUBLISH', try to find a better name from the path
             if project_name == "PUBLISH":
-                # This happens if you save directly to ACTIVE_WORK/PUBLISH
                 project_name = "General Workspace"
 
             if not project_name:
@@ -136,8 +139,18 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
             workflow = WORKFLOW_MAP[ext]
             
+            # --- THE ECHO FIX (Cooldown Logic) ---
+            cooldown_key = f"{project_name}_{workflow['label']}"
+            now = time.time()
+            if cooldown_key in self.last_sent:
+                if now - self.last_sent[cooldown_key] < COOLDOWN_SECONDS:
+                    # Silently ignore repetitive updates for the same project/activity
+                    return
+            
+            # Update last sent timestamp
+            self.last_sent[cooldown_key] = now
+            
             # CRITICAL TRIGGER: Trigger only when file is in a folder named 'PUBLISH'
-            # We check if 'PUBLISH' is one of the folder names in the path
             path_parts = file_path.upper().split(os.sep)
             is_milestone = "PUBLISH" in path_parts
             
@@ -155,9 +168,13 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # Sync to Supabase
                 supabase.table("studio_heartbeat").insert(data).execute()
                 
-                # If milestone, check if it's an image and upload to storage
-                if is_milestone and any(file_path.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
-                    self.upload_to_supabase_storage(file_path)
+                # If milestone, broadcast to Buffer and handle storage
+                if is_milestone:
+                    msg = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
+                    broadcast_to_buffer(msg)
+
+                    if any(file_path.lower().endswith(e) for e in ['.jpg', '.jpeg', '.png']):
+                        self.upload_to_supabase_storage(file_path)
                     
             except Exception as e:
                 print(f"Sync error: {e}")
@@ -165,7 +182,6 @@ class HeartbeatHandler(FileSystemEventHandler):
     def upload_to_supabase_storage(self, file_path):
         """Upload a milestone image to Supabase Storage."""
         filename = os.path.basename(file_path)
-        # Create a unique path in the bucket using the timestamp
         storage_path = f"{int(time.time())}_{filename}"
         
         try:
@@ -186,7 +202,7 @@ if __name__ == "__main__":
             observer = Observer()
             observer.schedule(event_handler, WATCH_PATH, recursive=True)
             observer.start()
-            print(f"Monitoring {WATCH_PATH} with Buffer integration (Self-Healing Active)...")
+            print(f"Monitoring {WATCH_PATH} with Buffer integration and Echo Fix (Active)...")
             
             while observer.is_alive():
                 time.sleep(1)

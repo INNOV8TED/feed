@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/roundup.py": {
+      "runtime": "vercel-python@0.1.0"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/roundup.py",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}
