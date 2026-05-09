@@ -150,6 +150,10 @@
         .sprite-deer { background-image: url('stephen_deer.png'); }
         .sprite-podcast { background-image: url('stephen_podcast.png'); }
         .sprite-focus { background-image: url('stephen_focus.png'); }
+        .sprite-hacker-pixel { background-image: url('stephen_hacker_pixel.png'); }
+        .sprite-synth-pixel { background-image: url('stephen_synth_pixel1.png'); }
+        .sprite-rand5 { background-image: url('stephen_rand5.png'); }
+        .sprite-rand6 { background-image: url('stephen_rand6.png'); }
 
         .sprite-glitch {
             position: absolute;
@@ -272,14 +276,23 @@
         }
 
         function getSpriteClass(data) {
-            const name = data.project_name.toUpperCase();
+            const name = (data.project_name || '').toUpperCase();
             const action = (data.action_label || '').toUpperCase();
+            
+            // 1. Specialized Project Mapping
             if (name.includes('LANNA')) return 'sprite-lanna_special';
             if (name.includes('SCARLETT')) return 'sprite-burlesque';
             if (name.includes('DEER')) return 'sprite-deer';
             if (name.includes('DFP')) return 'sprite-podcast';
-            if (data.mood_tag) return `sprite-${data.mood_tag}`;
-            return 'sprite-focus';
+            
+            // 2. Workflow Specific Mapping
+            if (action.includes('EDIT')) return 'sprite-hacker-pixel'; // Use the new pixel hacker for edits
+            if (action.includes('AUDIO') || action.includes('SYNTH')) return 'sprite-synth-pixel';
+            
+            // 3. Random Variety Pool (for everything else)
+            const randPool = ['sprite-rand5', 'sprite-rand6', 'sprite-focused', 'sprite-creative', 'sprite-artistic'];
+            const seed = data.id % randPool.length;
+            return randPool[seed];
         }
 
         function createPulseCard(data, isInitial = false) {
