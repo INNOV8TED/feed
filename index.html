@@ -586,8 +586,8 @@
         }
 
         async function loadInitial() {
-            // ONLY LOAD LAST 2 HOURS TO ELIMINATE GHOST ENTRIES
-            const sessionStart = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+            // LOAD LAST 24 HOURS TO ENSURE FEED IS NEVER BLANK AFTER HIBERNATION
+            const sessionStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
             const { data, error } = await supabaseClient
                 .from('studio_heartbeat')
                 .select('*')
