@@ -70,8 +70,8 @@ class handler(BaseHTTPRequestHandler):
                 "channelId": BUFFER_PROFILE_ID,
                 "schedulingType": "automatic",
                 "mode": "addToQueue",
-                "assets": { "images": [{"url": "https://feed.in-no-v8.com/stephen_focus.png"}] },
-                "metadata": { "instagram": { "type": "post", "shouldShareToFeed": True } }
+                "assets": { "images": [{"url": "https://feed.in-no-v8.com/stephen_focus_vertical.png"}] },
+                "metadata": { "instagram": { "type": "story", "shouldShareToFeed": False } }
             }
         }
         
