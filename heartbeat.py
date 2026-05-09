@@ -97,7 +97,7 @@ def get_project_name(file_path):
 
 def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False):
     """Broadcasts a message to a specific Buffer profile using GraphQL."""
-    # --- QUOTA CHECK ---
+    # --- CURATED SCHEDULE: 1 POST PER CHANNEL PER DAY ---
     try:
         today = datetime.now().strftime('%Y-%m-%d')
         quota = {}
@@ -105,13 +105,16 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False):
             with open(QUOTA_FILE, 'r') as f:
                 quota = json.load(f)
         
-        current_count = quota.get(today, 0)
-        if current_count >= DAILY_BUFFER_LIMIT:
-            log_msg(f"⚠️ [BUFFER QUOTA] Daily limit ({DAILY_BUFFER_LIMIT}) reached. Skipping social push to protect account.")
+        # Structure: quota[date][profile_id] = count
+        if today not in quota: quota[today] = {}
+        
+        current_count = quota[today].get(profile_id, 0)
+        if current_count >= 1: # ONLY 1 POST PER CHANNEL
+            log_msg(f"◈ [CURATED] Daily slot for channel {profile_id[-4:]} already filled. Web feed updated only.")
             return
             
-        # Increment quota
-        quota[today] = current_count + 1
+        # Mark as sent
+        quota[today][profile_id] = 1
         with open(QUOTA_FILE, 'w') as f:
             json.dump(quota, f)
     except Exception as e:
