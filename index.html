@@ -20,8 +20,9 @@
 
     <script>
         // Use the values you put in Vercel Environment Variables
-        const supabaseUrl = 'https://dzgyqrnmsnhqaiqthzok.supabase.co';
-        const supabaseKey = 'sb_publishable_TZOHRPfCaaV1AyIVErNknw_IzEsmhtQ'; // Replace with your key for local testing, or use process.env in a build step
+        // REPLACE THESE WITH YOUR ACTUAL KEYS OR USE ENVIRONMENT VARIABLES
+        const supabaseUrl = 'YOUR_SUPABASE_URL';
+        const supabaseKey = 'YOUR_SUPABASE_KEY'; 
         const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
         async function updateDisplay(data) {
