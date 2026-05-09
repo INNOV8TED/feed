@@ -8,3 +8,7 @@ ENV/
 env/
 .idea/
 .vscode/
+*.log
+*.lock
+storage_list.txt
+check_ids.py

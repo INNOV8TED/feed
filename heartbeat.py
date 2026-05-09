@@ -178,7 +178,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         if any(f in path for f in ["heartbeat.log", "heartbeat.py", "heartbeat.lock", "test_sync.py", "temp.jpg", ".git"]):
             return
         
-        log_msg(f"◈ [WATCHER] Change: {os.path.basename(event.src_path)}")
+        log_msg(f"[WATCHER] Change: {os.path.basename(event.src_path)}")
         self.process_event(event)
         
     def on_created(self, event):
@@ -187,7 +187,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         if any(f in path for f in ["heartbeat.log", "heartbeat.py", "heartbeat.lock", "test_sync.py", "temp.jpg", ".git"]):
             return
         
-        log_msg(f"◈ [WATCHER] Created: {os.path.basename(event.src_path)}")
+        log_msg(f"[WATCHER] Created: {os.path.basename(event.src_path)}")
         self.process_event(event)
 
     def process_event(self, event):
@@ -195,7 +195,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         ext = os.path.splitext(file_path)[1].lower().strip()
             
         # DEEP DEBUG
-        log_msg(f"◈ [DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
+        log_msg(f"[DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
 
         # FLEXIBLE MATCHING
         workflow = None
@@ -206,7 +206,7 @@ class HeartbeatHandler(FileSystemEventHandler):
 
         if workflow:
             project_name = get_project_name(file_path)
-            log_msg(f"◈ [WATCHER] Mapping: {project_name} | {workflow['label']}")
+            log_msg(f"[WATCHER] Mapping: {project_name} | {workflow['label']}")
             
             # --- DEBOUNCE LOGIC ---
             # Group events by project and label
@@ -236,7 +236,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             last_sent_cache[cooldown_key] = current_time
             
-            # 1. GENERATE DATA
+            # 1. PREPARE METADATA
             ext = os.path.splitext(file_path)[1].lower().strip()
             mood = workflow['mood']
             quote = get_random_quote()
@@ -248,48 +248,39 @@ class HeartbeatHandler(FileSystemEventHandler):
             }
             software = software_map.get(ext, "Creative Engine")
 
+            # 2. CAPTURE VISION (Synchronous)
+            asset_url = ""
+            asset_file = capture_screenshot()
+            
+            if asset_file:
+                try:
+                    with open(asset_file, 'rb') as f:
+                        file_ext = os.path.splitext(asset_file)[1]
+                        storage_path = f"pulses/{int(time.time())}{file_ext}"
+                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                        asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                    
+                    if "screenshot_" in asset_file and os.path.exists(asset_file):
+                        os.remove(asset_file)
+                except Exception as e:
+                    log_msg(f"[IMAGING ERROR] {e}")
+
+            # 3. DISPATCH FULL PULSE
             data = {
                 "project_name": project_name,
                 "action_label": workflow["label"],
-                "mood_tag": f"{mood}|Neural link active.||{software}|{quote}", 
+                "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
                 "is_milestone": (ext == ".mp4")
             }
             
-            # 2. INSTANT SYNC
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
             res = supabase.table("studio_heartbeat").insert(data).execute()
-            pulse_id = res.data[0]['id']
-            log_msg(f">>> [SYNC] SUCCESS! Pulse ID: {pulse_id}")
             
-            # 3. BACKGROUND IMAGING
-            def bg_imaging():
-                asset_file = capture_screenshot()
-                if not asset_file:
-                    try:
-                        parent_dir = os.path.dirname(file_path)
-                        images = [os.path.join(parent_dir, f) for f in os.listdir(parent_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
-                        if images:
-                            asset_file = max(images, key=os.path.getmtime)
-                    except: pass
-
-                if asset_file:
-                    try:
-                        with open(asset_file, 'rb') as f:
-                            file_ext = os.path.splitext(asset_file)[1]
-                            storage_path = f"pulses/{pulse_id}{file_ext}"
-                            supabase.storage.from_('studio-assets').upload(storage_path, f.read())
-                            asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-                            
-                            supabase.table("studio_heartbeat").update({"mood_tag": f"{mood}|Telemetry locked.|{asset_url}|{software}|{quote}"}).eq("id", pulse_id).execute()
-                            log_msg(f">>> [SYNC] Telemetry image updated for {pulse_id}")
-                        
-                        if "screenshot_" in asset_file and os.path.exists(asset_file):
-                            os.remove(asset_file)
-                    except Exception as e:
-                        log_msg(f">>> [IMAGING ERROR] {e}")
-
-            threading.Thread(target=bg_imaging).start()
+            if res.data:
+                log_msg(f">>> [SYNC] SUCCESS! Vision Linked. Pulse ID: {res.data[0]['id']}")
+            else:
+                log_msg(">>> [SYNC ERROR] Insert failed.")
 
             if data["is_milestone"]:
                 msg = f"🚀 Project Delivered! #{project_name} export complete. View the live pulse: feed.in-no-v8.com"
