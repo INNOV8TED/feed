@@ -168,8 +168,12 @@ class handler(BaseHTTPRequestHandler):
                 "text": caption,
                 "channelId": BUFFER_PROFILE_ID,
                 "schedulingType": "automatic",
+                "mode": "addToQueue",
                 "assets": {"images": [{"url": final_url}]},
-                "metadata": {"instagram": {"type": "story"}}
+                "metadata": {"instagram": {
+                    "type": "story",
+                    "shouldShareToFeed": False
+                }}
             }}
         }, headers=headers)
         
