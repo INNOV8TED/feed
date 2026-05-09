@@ -27,6 +27,7 @@ DEBOUNCE_SECONDS = 5.0  # Increased debounce for stable logging
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
+last_size_cache = {}
 pending_timers = {}
 
 # --- SINGLETON LOCK ---
@@ -206,6 +207,23 @@ class HeartbeatHandler(FileSystemEventHandler):
 
         if workflow:
             project_name = get_project_name(file_path)
+            
+            # --- OPEN VS SAVE FILTER ---
+            try:
+                current_size = os.path.getsize(file_path)
+                last_size = last_size_cache.get(file_path)
+                
+                # If it's a project file (not a render) and size hasn't changed, ignore it.
+                # This prevents "Open" events from triggering pulses.
+                if ext != ".mp4" and last_size is not None and current_size == last_size:
+                    # log_msg(f"[WATCHER] Size unchanged for {os.path.basename(file_path)}. Skipping pulse.")
+                    return
+                
+                last_size_cache[file_path] = current_size
+            except Exception as e:
+                # If we can't get the size (e.g. file locked/temp), proceed anyway
+                pass
+
             log_msg(f"[WATCHER] Mapping: {project_name} | {workflow['label']}")
             
             # --- DEBOUNCE LOGIC ---
@@ -334,6 +352,18 @@ def capture_screenshot():
         return None
 
 if __name__ == "__main__":
+    # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
+    log_msg("Initializing Studio Pulse Vision Pipeline...")
+    for root, dirs, files in os.walk(WATCH_PATH):
+        if any(ignore in root for ignore in IGNORE_FOLDERS): continue
+        for f in files:
+            ext = os.path.splitext(f)[1].lower().strip()
+            if any(key in ext for key in WORKFLOW_MAP):
+                path = os.path.join(root, f)
+                try: last_size_cache[path] = os.path.getsize(path)
+                except: pass
+    log_msg(f"Primed {len(last_size_cache)} project files.")
+
     while True:
         try:
             event_handler = HeartbeatHandler()
