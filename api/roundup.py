@@ -80,7 +80,13 @@ class handler(BaseHTTPRequestHandler):
                 caption += "\n\nLive: feed.in-no-v8.com"
                 
                 # 3. Gather Image Sources
-                archive_mags = fetch_archive_mags(dominant_project.lower() if dominant_project != "INNOV8" else "popular mechanics")
+                MAG_CATEGORIES = [
+                    "popular mechanics", "byte magazine", "omni magazine", "science & mechanics",
+                    "electronics world", "modern screen", "life magazine", "radio-electronics",
+                    "high fidelity", "computermusic", "national geographic", "art news"
+                ]
+                mag_query = random.choice(MAG_CATEGORIES)
+                archive_mags = fetch_archive_mags(mag_query)
                 
                 fallback_mags = [
                     "https://feed.in-no-v8.com/acam_sprite.png",
@@ -129,25 +135,38 @@ class handler(BaseHTTPRequestHandler):
                     except: continue
 
                 # 5. Sprite (FRONT LAYER)
+                sprite_pool = [
+                    "stephen_artist.png", "stephen_burlesque.png", "stephen_celebration.png", 
+                    "stephen_deer.png", "stephen_focus.png", "stephen_hacker.png", 
+                    "stephen_lanna.png", "stephen_podcast.png", "stephen_synth.png",
+                    "stephen_rand1.png", "stephen_rand2.png", "stephen_rand3.png", 
+                    "stephen_rand4.png", "stephen_rand5.png", "stephen_rand6.png"
+                ]
+                
+                # Try project match first, then fallback to random
                 sprite_map = {
                     "LANNA": "stephen_lanna.png",
                     "SCARLETT": "stephen_burlesque.png",
                     "DEER": "stephen_deer.png",
                     "DFP": "stephen_podcast.png",
-                    "BLUE CHROMATIC": "stephen_synth.png"
+                    "AUDIO": "stephen_synth.png"
                 }
-                sprite_file = "stephen_focus.png"
+                
+                sprite_file = None
                 for key, val in sprite_map.items():
                     if key in dominant_project:
                         sprite_file = val
                         break
                 
+                if not sprite_file:
+                    sprite_file = random.choice(sprite_pool)
+                
                 try:
                     r_sprite = requests.get(f"https://feed.in-no-v8.com/{sprite_file}", timeout=10)
                     sprite = Image.open(BytesIO(r_sprite.content)).convert("RGBA")
-                    sprite_w = int(WIDTH * 0.8)
+                    sprite_w = int(WIDTH * 0.85)
                     sprite = sprite.resize((sprite_w, int(sprite_w * (sprite.height/sprite.width))))
-                    canvas.paste(sprite, (WIDTH - sprite.width + 50, HEIGHT - sprite.height + 50), sprite)
+                    canvas.paste(sprite, (WIDTH - sprite.width + 100, HEIGHT - sprite.height + 100), sprite)
                 except: pass
 
                 # 6. Save and Upload
