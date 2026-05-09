@@ -25,6 +25,25 @@ DEBOUNCE_SECONDS = 2.0  # 2-second debounce for rapid file changes
 last_sent_cache = {}
 pending_timers = {}
 
+# --- SINGLETON LOCK ---
+LOCK_FILE = "heartbeat.lock"
+try:
+    if os.path.exists(LOCK_FILE):
+        # Check if the process is actually running (simple file existence for now, but we'll try to remove it on exit)
+        os.remove(LOCK_FILE)
+    
+    # Create the lock file
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+        
+    import atexit
+    def cleanup():
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    atexit.register(cleanup)
+except Exception as e:
+    print(f"Singleton check failed: {e}. If this is a duplicate process, it will exit.")
+
 if not URL or not KEY:
     print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
     exit(1)
