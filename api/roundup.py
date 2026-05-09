@@ -32,7 +32,8 @@ class handler(BaseHTTPRequestHandler):
             return
 
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        time_limit = (datetime.utcnow() - timedelta(hours=12)).isoformat()
+        # Fix: Remove microseconds for Supabase compatibility
+        time_limit = (datetime.utcnow() - timedelta(hours=12)).replace(microsecond=0).isoformat()
 
         # 2. Analyze Dominant Project & Narrative
         try:
@@ -150,8 +151,15 @@ class handler(BaseHTTPRequestHandler):
         output.seek(0)
         
         card_name = f"roundup_{int(datetime.now().timestamp())}.jpg"
-        supabase.storage.from_("studio-assets").upload(path=f"roundups/{card_name}", file=output.read())
-        final_url = supabase.storage.from_("studio-assets").get_public_url(f"roundups/{card_name}")
+        # Fix: Upload to root of bucket to avoid folder issues
+        try:
+            supabase.storage.from_("studio-assets").upload(path=card_name, file=output.read())
+            final_url = supabase.storage.from_("studio-assets").get_public_url(card_name)
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f"Storage Upload Failed: {e}".encode())
+            return
 
         # 7. Broadcast
         headers = {"Authorization": f"Bearer {BUFFER_TOKEN}"}
