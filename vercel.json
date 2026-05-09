@@ -1,9 +1,10 @@
 {
-  "functions": {
-    "api/*.py": {
-      "runtime": "vercel-python@0.1.0"
+  "builds": [
+    {
+      "src": "api/*.py",
+      "use": "@vercel/python"
     }
-  },
+  ],
   "crons": [
     {
       "path": "/api/roundup.py",
