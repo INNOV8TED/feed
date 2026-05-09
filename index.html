@@ -249,7 +249,7 @@
     <script>
         const SUPABASE_URL = "https://dzgyqrnmsnhqaiqthzok.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6Z3lxcm5tc25ocWFpcXRoem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyOTQwNzYsImV4cCI6MjA5Mzg3MDA3Nn0.sUWGeR3_Vd1Xm40lRoA0q1nXUjaMK_BbXXv3SBkZ6cY";
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const streamContainer = document.getElementById('stream');
 
@@ -352,13 +352,13 @@
         }
 
         async function loadInitial() {
-            const { data, error } = await supabase.from('studio_heartbeat').select('*').order('created_at', { ascending: false }).limit(20);
+            const { data, error } = await supabaseClient.from('studio_heartbeat').select('*').order('created_at', { ascending: false }).limit(20);
             if (data) data.reverse().forEach(p => updateUI(p, true));
         }
 
         loadInitial();
 
-        supabase.channel('public:studio_heartbeat')
+        supabaseClient.channel('public:studio_heartbeat')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'studio_heartbeat' }, payload => {
                 updateUI(payload.new);
             }).subscribe();
