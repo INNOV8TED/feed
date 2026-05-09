@@ -99,44 +99,77 @@
         /* HORIZONTAL FEED */
         #main-container {
             flex-grow: 1;
-            padding: 80px 40px;
+            padding: 100px 40px 120px;
             overflow-x: auto;
             overflow-y: hidden;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: flex-end;
         }
 
         #stream {
             display: flex;
-            gap: 30px;
-            height: 70vh;
+            gap: 40px;
+            height: 80vh; /* CINEMATIC SCALE */
             padding-bottom: 20px;
+            align-items: flex-end;
         }
 
-        /* MASONRY COLUMNS (Simulated in horizontal flow) */
+        /* MASONRY COLUMNS */
         .column {
             display: flex;
             flex-direction: column;
-            gap: 30px;
-            min-width: 450px;
+            gap: 40px;
+            min-width: 550px;
+            height: 100%;
         }
 
         /* PULSE CARD */
         .pulse-card {
             position: relative;
             background: var(--card-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 25px;
+            border-radius: 15px;
+            padding: 35px;
             display: flex;
             align-items: center;
-            gap: 25px;
+            gap: 35px;
             transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
             animation: slideIn 0.8s ease-out forwards;
             overflow: hidden;
-            width: 100%;
+            flex: 1; /* FILL COLUMN HEIGHT */
+        }
+
+        /* NEXUS BUTTON */
+        #nexus-link {
+            position: fixed;
+            bottom: 40px; left: 40px;
+            z-index: 2200;
+            width: 180px;
+            transition: all 0.4s ease;
+            filter: drop-shadow(0 0 10px rgba(0,255,170,0.2));
+        }
+
+        #nexus-link:hover {
+            transform: scale(1.05) translateY(-5px);
+            filter: drop-shadow(0 0 20px var(--accent-color));
+        }
+
+        #nexus-link img { width: 100%; height: auto; }
+
+        /* PAGE TITLE */
+        #page-title {
+            position: fixed;
+            top: 40px; right: 60px;
+            font-family: 'Space Mono', monospace;
+            font-size: 1.2em;
+            font-weight: 700;
+            letter-spacing: 12px;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            opacity: 0.8;
+            z-index: 100;
         }
 
         .pulse-bg {
@@ -222,8 +255,13 @@
     </style>
 </head>
 <body>
+    <div id="page-title">IN-NO-V8 Work Feed</div>
     <div id="info-toggle" onclick="togglePanel()">◈ System Status</div>
     
+    <a href="https://in-no-v8.com" id="nexus-link" target="_blank">
+        <img src="innov8_logo.png" alt="IN-NO-V8 Logo">
+    </a>
+
     <div id="info-panel">
         <div class="intro-title">STUDIO PULSE</div>
         <p class="intro-text">
