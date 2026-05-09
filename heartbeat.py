@@ -5,6 +5,7 @@ import requests
 import pyautogui
 import traceback
 import json
+import subprocess
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
@@ -127,7 +128,7 @@ def broadcast_to_buffer(message, profile_id=None, asset_url=None, is_video=False
             "metadata": {
                 "instagram": {
                     "type": "reels" if is_video else "story",
-                    "shouldShareToFeed": True if is_video else False
+                    "shouldShareToFeed": False
                 }
             }
         }
@@ -278,8 +279,14 @@ class HeartbeatHandler(FileSystemEventHandler):
             asset_url = ""
             is_video = (ext == ".mp4")
             
-            # For MP4s, we try to use the actual file as the asset for Buffer
-            asset_file = file_path if is_video else capture_screenshot()
+            # For MP4s, we extract a random 10s highlight clip instead of the whole file
+            asset_file = None
+            if is_video:
+                log_msg(f">>> [VIDEO] Extracting highlight from {os.path.basename(file_path)}...")
+                asset_file = extract_random_clip(file_path)
+            
+            if not asset_file:
+                asset_file = capture_screenshot()
             
             if asset_file:
                 try:
@@ -289,8 +296,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                         supabase.storage.from_('studio-assets').upload(storage_path, f.read())
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
-                    # Cleanup screenshot but keep project video
-                    if "screenshot_" in asset_file and os.path.exists(asset_file):
+                    # Cleanup screenshot/clip but keep project video
+                    if ("screenshot_" in asset_file or "clip_" in asset_file) and os.path.exists(asset_file):
                         os.remove(asset_file)
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
@@ -382,6 +389,33 @@ QUOTES = [
 
 def get_random_quote():
     return QUOTES[int(time.time()) % len(QUOTES)]
+
+def extract_random_clip(video_path):
+    """Extracts a random 10-second clip from an MP4 file using FFmpeg."""
+    try:
+        # 1. Get Duration using ffprobe
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+        duration = float(subprocess.check_output(cmd).decode().strip())
+        
+        if duration < 12:
+            return video_path # Too short to clip properly, use original
+            
+        # 2. Pick random start (at least 10s before end)
+        start = random.uniform(2, max(2, duration - 12))
+        output_file = f"clip_{int(time.time())}.mp4"
+        
+        # 3. Extract 10s clip with fast-seek
+        # Using libx264 for compatibility and small file size
+        cmd = [
+            'ffmpeg', '-y', '-ss', str(start), '-t', '10', '-i', video_path,
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', 
+            '-c:a', 'aac', '-b:a', '128k', output_file
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_file
+    except Exception as e:
+        log_msg(f"[CLIP ERROR] {e}")
+        return None
 
 def capture_screenshot():
     """Captures the current workstation screen as a 'Live Interface' snapshot."""
