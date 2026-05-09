@@ -77,65 +77,75 @@ class handler(BaseHTTPRequestHandler):
         # 3. Fetch Images (Prioritizing HERO_ and MAG_)
         hero_images = []
         regular_images = []
+        
+        # Fallback assets if Supabase is empty
+        fallback_mags = [
+            "https://feed.in-no-v8.com/acam_sprite.png",
+            "https://feed.in-no-v8.com/lanna_sprite.png",
+            "https://feed.in-no-v8.com/stephen_synth.png"
+        ]
+
         try:
-            # Increase limit to ensure we find enough variety
-            files = supabase.storage.from_("studio-assets").list(options={"limit": 50})
-            
+            files = supabase.storage.from_("studio-assets").list(options={"limit": 100})
             for f in files:
                 name = f['name']
                 if any(name.lower().endswith(ext) for ext in ['.jpg', '.png', '.jpeg']):
                     url = supabase.storage.from_("studio-assets").get_public_url(name)
-                    # Handle both prefix and inclusion of MAG/HERO
                     if "HERO" in name.upper():
                         hero_images.append(url)
-                    elif "MAG" in name.upper() or "177" in name: # Magazines or recent pulses
-                        regular_images.insert(0, url)
+                    elif "MAG" in name.upper() or "177" in name or "ROUNDUP" in name.upper():
+                        regular_images.append(url)
                     else:
                         regular_images.append(url)
-            
-            print(f"Found {len(hero_images)} HERO images and {len(regular_images)} regular images.")
-            
+        except Exception as e:
+            print(f"Supabase list failed: {e}")
+
+        if not regular_images:
+            regular_images = fallback_mags
+
+        # 4. Assemble Collage
+        try:
             # Load Background Image
             bg_image = None
             bg_sources = hero_images + regular_images
             if bg_sources:
-                for _ in range(3): # Try up to 3 random images if one fails
+                for _ in range(3):
                     try:
                         bg_url = random.choice(bg_sources)
-                        bg_image = Image.open(BytesIO(requests.get(bg_url).content)).convert("RGBA")
+                        res = requests.get(bg_url, timeout=5)
+                        bg_image = Image.open(BytesIO(res.content)).convert("RGBA")
                         break
                     except: continue
 
-            # 4. Assemble Collage
             # 4b. Draw Base Image
             if bg_image:
                 scale = max(WIDTH/bg_image.width, HEIGHT/bg_image.height)
                 bg_image = bg_image.resize((int(bg_image.width*scale), int(bg_image.height*scale)))
                 canvas.paste(bg_image, ((WIDTH-bg_image.width)//2, (HEIGHT-bg_image.height)//2))
-                tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,140))
+                # Lighter tint (70 instead of 140) to keep background visible
+                tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,70))
                 canvas.paste(tint, (0,0), tint)
             
-            # 4c. Draw Supporting Collage
-            random.shuffle(regular_images)
-            for url in regular_images[:12]:
+            # 4c. Draw Supporting Collage (UNDER the sprite)
+            collage_sources = regular_images + fallback_mags
+            random.shuffle(collage_sources)
+            for url in collage_sources[:15]:
                 try:
                     img_res = requests.get(url, timeout=5)
                     img = Image.open(BytesIO(img_res.content)).convert("RGBA")
                     w, h = img.size
-                    cw, ch = int(w * 0.8), int(h * 0.8)
-                    img = img.crop((random.randint(0, w-cw), random.randint(0, h-ch), w, h))
-                    scale = random.uniform(1.2, 3.0)
+                    cw, ch = int(w * 0.9), int(h * 0.9)
+                    img = img.crop((random.randint(0, w-cw), random.randint(0, ch-ch), w, h))
+                    scale = random.uniform(1.0, 2.5)
                     img = img.resize((int(img.width * scale), int(img.height * scale)))
-                    img.putalpha(random.randint(120, 200))
-                    # Jitter the rotation for a more "messy desk" look
-                    img = img.rotate(random.randint(-10, 10), expand=True)
-                    canvas.paste(img, (random.randint(-WIDTH//3, WIDTH), random.randint(-HEIGHT//3, HEIGHT)), img)
+                    img.putalpha(random.randint(150, 230)) # More opaque
+                    img = img.rotate(random.randint(-15, 15), expand=True)
+                    canvas.paste(img, (random.randint(-WIDTH//4, WIDTH), random.randint(-HEIGHT//4, HEIGHT)), img)
                 except: continue
-
         except Exception as e:
-            print(f"Image processing failed: {e}")
+            print(f"Collage assembly failed: {e}")
 
-        # 5. Dynamic Stephen Sprite Selection
+        # 5. Dynamic Stephen Sprite Selection (FRONT LAYER)
         sprite_map = {
             "LANNA": "stephen_lanna.png",
             "SCARLETT": "stephen_burlesque.png",
@@ -150,13 +160,15 @@ class handler(BaseHTTPRequestHandler):
                 break
         
         try:
-            r_sprite = requests.get(f"https://feed.in-no-v8.com/{sprite_file}")
+            r_sprite = requests.get(f"https://feed.in-no-v8.com/{sprite_file}", timeout=10)
             sprite = Image.open(BytesIO(r_sprite.content)).convert("RGBA")
-            sprite_w = int(WIDTH * 0.65)
+            sprite_w = int(WIDTH * 0.75) # Larger sprite
             aspect = sprite.height / sprite.width
             sprite = sprite.resize((sprite_w, int(sprite_w * aspect)))
-            canvas.paste(sprite, (WIDTH - sprite.width + 80, HEIGHT - sprite.height + 80), sprite)
-        except: pass
+            # Position at the very front
+            canvas.paste(sprite, (WIDTH - sprite.width + 50, HEIGHT - sprite.height + 50), sprite)
+        except Exception as e: 
+            print(f"Sprite loading failed: {e}")
 
         # 6. Save and Upload Final Card
         draw = ImageDraw.Draw(canvas)
