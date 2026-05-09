@@ -17,7 +17,9 @@ load_dotenv()
 URL = os.environ.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_KEY")
 BUFFER_TOKEN = os.environ.get("BUFFER_ACCESS_TOKEN")
-BUFFER_PROFILE_ID = os.environ.get("BUFFER_PROFILE_ID")
+BUFFER_PROFILE_ID_MAIN = os.environ.get("BUFFER_PROFILE_ID")
+BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
+BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE") # Reserved for future use
 
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
@@ -86,19 +88,19 @@ def get_project_name(file_path):
     except:
         return "Studio Project"
 
-def broadcast_to_buffer(message):
-    if not BUFFER_TOKEN or not BUFFER_PROFILE_ID or "your_buffer" in BUFFER_TOKEN:
-        print("Buffer credentials not configured. Skipping broadcast.")
+def broadcast_to_buffer(message, profile_id=None, asset_url=None, is_video=False):
+    if not BUFFER_TOKEN or not profile_id or "your_buffer" in BUFFER_TOKEN:
+        log_msg("Buffer credentials or Profile ID missing. Skipping broadcast.")
         return
 
     url = "https://api.buffer.com"
     
-    # GraphQL mutation for creating a post with assets
+    # GraphQL mutation for creating a post with assets (Story or Reel)
     mutation = """
     mutation CreateNewPost($input: CreatePostInput!) {
       createPost(input: $input) {
         ... on PostActionSuccess {
-          post { id text }
+          post { id }
         }
         ... on MutationError {
           message
@@ -107,22 +109,25 @@ def broadcast_to_buffer(message):
     }
     """
     
-    # Use a guaranteed 1080x1080 image for this test (Lorem Picsum)
-    test_image_url = "https://picsum.photos/1080/1080"
-    
+    # Select asset type
+    assets = {}
+    if asset_url:
+        if is_video:
+            assets = {"videos": [{"url": asset_url}]}
+        else:
+            assets = {"images": [{"url": asset_url}]}
+
     variables = {
         "input": {
             "text": message,
-            "channelId": BUFFER_PROFILE_ID,
+            "channelId": profile_id,
             "schedulingType": "automatic",
             "mode": "addToQueue",
-            "assets": {
-                "images": [{"url": test_image_url}]
-            },
+            "assets": assets,
             "metadata": {
                 "instagram": {
-                    "type": "post",
-                    "shouldShareToFeed": True
+                    "type": "reels" if is_video else "story",
+                    "shouldShareToFeed": True if is_video else False
                 }
             }
         }
@@ -138,20 +143,17 @@ def broadcast_to_buffer(message):
         if response.status_code == 200:
             data = response.json()
             if "errors" in data:
-                # Use ascii for error messages to be safe
-                safe_err = str(data['errors']).encode('ascii', 'ignore').decode('ascii')
-                print(f"Buffer GraphQL Error: {safe_err}")
+                log_msg(f"Buffer GraphQL Error: {data['errors']}")
             else:
                 try:
                     post_id = data['data']['createPost']['post']['id']
-                    print(f"Success! Post created with ID: {post_id}")
+                    log_msg(f"🚀 Buffer Success! Post created with ID: {post_id} on channel {profile_id}")
                 except:
-                    print(f"Buffer Response Data: {data}")
+                    log_msg(f"Buffer Response Data: {data}")
         else:
-            safe_body = response.text.encode('ascii', 'ignore').decode('ascii')
-            print(f"Buffer HTTP error: {response.status_code} - {safe_body}")
+            log_msg(f"Buffer HTTP error: {response.status_code} - {response.text}")
     except Exception as e:
-        print("Buffer broadcast script error (likely console encoding related). Check Buffer UI.")
+        log_msg(f"Buffer broadcast script error: {e}")
 
 # --- SUPABASE HARDENING ---
 def get_supabase_client():
@@ -164,9 +166,14 @@ def get_supabase_client():
 supabase = get_supabase_client()
 
 def log_msg(msg):
-    """Robust logging that works even in background mode."""
+    """Robust logging that works even in background mode and handles emojis."""
     full_msg = f"[{time.ctime()}] {msg}"
-    print(full_msg)
+    # Safe print for Windows console
+    try:
+        print(full_msg.encode('ascii', 'ignore').decode('ascii'))
+    except:
+        pass
+        
     try:
         with open("heartbeat.log", "a", encoding='utf-8') as f:
             f.write(full_msg + "\n")
@@ -267,9 +274,12 @@ class HeartbeatHandler(FileSystemEventHandler):
             }
             software = software_map.get(ext, "Creative Engine")
 
-            # 2. CAPTURE VISION (Synchronous)
+            # 2. CAPTURE VISION / VIDEO (Synchronous)
             asset_url = ""
-            asset_file = capture_screenshot()
+            is_video = (ext == ".mp4")
+            
+            # For MP4s, we try to use the actual file as the asset for Buffer
+            asset_file = file_path if is_video else capture_screenshot()
             
             if asset_file:
                 try:
@@ -279,18 +289,19 @@ class HeartbeatHandler(FileSystemEventHandler):
                         supabase.storage.from_('studio-assets').upload(storage_path, f.read())
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
+                    # Cleanup screenshot but keep project video
                     if "screenshot_" in asset_file and os.path.exists(asset_file):
                         os.remove(asset_file)
                 except Exception as e:
-                    log_msg(f"[IMAGING ERROR] {e}")
+                    log_msg(f"[IMAGING/VIDEO ERROR] {e}")
 
-            # 3. DISPATCH FULL PULSE
+            # 3. DISPATCH FULL PULSE TO SUPABASE
             data = {
                 "project_name": project_name,
                 "action_label": workflow["label"],
                 "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
-                "is_milestone": (ext == ".mp4")
+                "is_milestone": is_video
             }
             
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
@@ -301,9 +312,22 @@ class HeartbeatHandler(FileSystemEventHandler):
             else:
                 log_msg(">>> [SYNC ERROR] Insert failed.")
 
+            # 4. ROUTE TO BUFFER
             if data["is_milestone"]:
-                msg = f"🚀 Project Delivered! #{project_name} export complete. View the live pulse: feed.in-no-v8.com"
-                broadcast_to_buffer(msg)
+                # Determine Target Channel
+                buffer_profile = BUFFER_PROFILE_ID_MAIN
+                proj_upper = project_name.upper()
+                
+                if "LANNA" in proj_upper:
+                    buffer_profile = BUFFER_PROFILE_ID_LANNA
+                elif any(x in proj_upper for x in ["BLUE", "MUSIC", "CHROMATIC", "TRIANGLE"]):
+                    buffer_profile = BUFFER_PROFILE_ID_BLUE
+                
+                msg = f"🚀 Project Update: #{project_name} | {workflow['label']} complete. View live: feed.in-no-v8.com"
+                if is_video:
+                    msg = f"🔥 New Clip: #{project_name} in progress. #{software} workflow. Live feed: feed.in-no-v8.com"
+                
+                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=is_video)
                 
         except Exception as e:
             err_msg = traceback.format_exc()
