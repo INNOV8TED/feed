@@ -36,6 +36,17 @@ class handler(BaseHTTPRequestHandler):
         # Fix: Remove microseconds for Supabase compatibility
         time_limit = (datetime.utcnow() - timedelta(hours=12)).replace(microsecond=0).isoformat()
 
+        # 0. Initialize Canvas (Early Fallback)
+        canvas = Image.new("RGBA", (WIDTH, HEIGHT), (10, 10, 15, 255))
+        draw = ImageDraw.Draw(canvas)
+        
+        # Draw Cinematic Gradient (Base Layer)
+        for i in range(HEIGHT):
+            r = int(10 + (25 - 10) * i / HEIGHT)
+            g = int(10 + (35 - 10) * i / HEIGHT)
+            b = int(15 + (45 - 15) * i / HEIGHT)
+            draw.line([(0, i), (WIDTH, i)], fill=(r, g, b, 255))
+
         # 2. Analyze Dominant Project & Narrative
         try:
             ping_res = supabase.table("studio_heartbeat").select("*").gte("created_at", time_limit).execute()
@@ -63,67 +74,64 @@ class handler(BaseHTTPRequestHandler):
             caption += "Deep in the weeds of the creative process. 🛠️"
         caption += "\n\nLive Pulse: feed.in-no-v8.com"
 
-        # 3. Fetch Images (Prioritizing HERO_)
+        # 3. Fetch Images (Prioritizing HERO_ and MAG_)
+        hero_images = []
+        regular_images = []
         try:
-            files = supabase.storage.from_("studio-assets").list()
-            hero_images = []
-            regular_images = []
+            # Increase limit to ensure we find enough variety
+            files = supabase.storage.from_("studio-assets").list(options={"limit": 50})
             
             for f in files:
                 name = f['name']
                 if any(name.lower().endswith(ext) for ext in ['.jpg', '.png', '.jpeg']):
                     url = supabase.storage.from_("studio-assets").get_public_url(name)
-                    if name.upper().startswith("HERO_"):
+                    # Handle both prefix and inclusion of MAG/HERO
+                    if "HERO" in name.upper():
                         hero_images.append(url)
-                    elif name.upper().startswith("MAG_"):
-                        regular_images.insert(0, url) # Magazines are essential filler
+                    elif "MAG" in name.upper() or "177" in name: # Magazines or recent pulses
+                        regular_images.insert(0, url)
                     else:
                         regular_images.append(url)
             
-            print(f"Found {len(hero_images)} HERO images and {len(regular_images)} regular/magazine images.")
+            print(f"Found {len(hero_images)} HERO images and {len(regular_images)} regular images.")
             
-            # Load images
+            # Load Background Image
             bg_image = None
-            if hero_images:
-                hero_url = random.choice(hero_images)
-                bg_image = Image.open(BytesIO(requests.get(hero_url).content)).convert("RGBA")
-            elif regular_images:
-                reg_url = random.choice(regular_images)
-                bg_image = Image.open(BytesIO(requests.get(reg_url).content)).convert("RGBA")
-            
-            # 4. Assemble Collage
-            canvas = Image.new("RGBA", (WIDTH, HEIGHT), (10, 10, 15, 255))
-            draw = ImageDraw.Draw(canvas)
-            
-            # 4a. Draw Cinematic Fallback Gradient (Top to Bottom)
-            for i in range(HEIGHT):
-                r = int(10 + (20 - 10) * i / HEIGHT)
-                g = int(10 + (25 - 10) * i / HEIGHT)
-                b = int(15 + (35 - 15) * i / HEIGHT)
-                draw.line([(0, i), (WIDTH, i)], fill=(r, g, b, 255))
+            bg_sources = hero_images + regular_images
+            if bg_sources:
+                for _ in range(3): # Try up to 3 random images if one fails
+                    try:
+                        bg_url = random.choice(bg_sources)
+                        bg_image = Image.open(BytesIO(requests.get(bg_url).content)).convert("RGBA")
+                        break
+                    except: continue
 
+            # 4. Assemble Collage
             # 4b. Draw Base Image
             if bg_image:
                 scale = max(WIDTH/bg_image.width, HEIGHT/bg_image.height)
                 bg_image = bg_image.resize((int(bg_image.width*scale), int(bg_image.height*scale)))
                 canvas.paste(bg_image, ((WIDTH-bg_image.width)//2, (HEIGHT-bg_image.height)//2))
-                tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,100))
+                tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,140))
                 canvas.paste(tint, (0,0), tint)
             
-            # 4b. Draw Supporting Collage
+            # 4c. Draw Supporting Collage
             random.shuffle(regular_images)
-            for url in regular_images[:10]:
+            for url in regular_images[:12]:
                 try:
-                    img = Image.open(BytesIO(requests.get(url).content)).convert("RGBA")
+                    img_res = requests.get(url, timeout=5)
+                    img = Image.open(BytesIO(img_res.content)).convert("RGBA")
                     w, h = img.size
-                    cw, ch = int(w * 0.7), int(h * 0.7)
+                    cw, ch = int(w * 0.8), int(h * 0.8)
                     img = img.crop((random.randint(0, w-cw), random.randint(0, h-ch), w, h))
-                    scale = random.uniform(1.5, 3.5)
+                    scale = random.uniform(1.2, 3.0)
                     img = img.resize((int(img.width * scale), int(img.height * scale)))
-                    img.putalpha(random.randint(100, 180))
-                    canvas.paste(img, (random.randint(-WIDTH//2, WIDTH), random.randint(-HEIGHT//2, HEIGHT)), img)
-                except:
-                    continue
+                    img.putalpha(random.randint(120, 200))
+                    # Jitter the rotation for a more "messy desk" look
+                    img = img.rotate(random.randint(-10, 10), expand=True)
+                    canvas.paste(img, (random.randint(-WIDTH//3, WIDTH), random.randint(-HEIGHT//3, HEIGHT)), img)
+                except: continue
+
         except Exception as e:
             print(f"Image processing failed: {e}")
 
