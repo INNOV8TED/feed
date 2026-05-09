@@ -8,35 +8,22 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Outfit:wght@300;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0a0a0a;
-            --text-color: #e0e0e0;
+            --bg-color: #060608;
+            --text-color: #e8e4dc;
             --accent-color: #00ff88;
-            --card-bg: rgba(255, 255, 255, 0.05);
-            --border-color: rgba(255, 255, 255, 0.1);
+            --card-bg: rgba(20, 20, 25, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
             --font-main: 'Inter', sans-serif;
             --font-display: 'Outfit', sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
+            --glow: 0 0 20px rgba(0, 255, 136, 0.2);
         }
 
-        /* LANNA THEME */
-        .theme-lanna {
-            --bg-color: #1a0f0a;
-            --text-color: #f5e6d3;
-            --accent-color: #d4af37; /* Gold */
-            --card-bg: rgba(212, 175, 55, 0.05);
-            --border-color: rgba(212, 175, 55, 0.2);
-            --font-display: 'Inter', serif;
-        }
-
-        /* A-CAM THEME */
-        .theme-acam {
-            --bg-color: #050a0f;
-            --text-color: #d1f7ff;
-            --accent-color: #00d9ff; /* Cyan */
-            --card-bg: rgba(0, 217, 255, 0.05);
-            --border-color: rgba(0, 217, 255, 0.2);
-            --font-display: 'JetBrains Mono', monospace;
-        }
+        /* DYNAMIC PROJECT THEMES */
+        .theme-lanna { --accent-color: #d4af37; --bg-color: #120d0a; --glow: 0 0 25px rgba(212, 175, 55, 0.3); }
+        .theme-acam { --accent-color: #00d9ff; --bg-color: #050a0f; --glow: 0 0 25px rgba(0, 217, 255, 0.3); }
+        .theme-scarlett { --accent-color: #ff3366; --bg-color: #0f0508; --glow: 0 0 25px rgba(255, 51, 102, 0.3); }
+        .theme-focused { --accent-color: #00ff88; }
 
         body {
             background-color: var(--bg-color);
@@ -44,7 +31,7 @@
             font-family: var(--font-main);
             margin: 0;
             padding: 0;
-            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 1.5s ease;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -52,85 +39,123 @@
             overflow-x: hidden;
         }
 
+        /* CRT SCANLINE OVERLAY */
+        body::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+            z-index: 9999;
+            background-size: 100% 3px, 3px 100%;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
         header {
             width: 100%;
-            padding: 40px 20px;
+            padding: 50px 20px;
             text-align: center;
-            border-bottom: 1px solid var(--border-color);
-            background: linear-gradient(to bottom, rgba(0,0,0,0.3), transparent);
+            position: relative;
+        }
+
+        .header-bg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 200px;
+            background: radial-gradient(circle at center, var(--accent-color), transparent 70%);
+            opacity: 0.05;
+            filter: blur(50px);
+            transition: all 1.5s ease;
         }
 
         h1 {
             font-family: var(--font-display);
-            font-weight: 600;
-            letter-spacing: 2px;
+            font-weight: 300;
+            letter-spacing: 8px;
             margin: 0;
             text-transform: uppercase;
-            font-size: 1.2rem;
+            font-size: 1rem;
             color: var(--accent-color);
+            text-shadow: var(--glow);
         }
 
         .container {
-            max-width: 800px;
+            max-width: 900px;
             width: 100%;
-            padding: 40px 20px;
+            padding: 0 20px 100px;
             box-sizing: border-box;
+            z-index: 10;
         }
 
         .pulse-stream {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 25px;
         }
 
         .pulse-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 24px;
+            border-radius: 4px;
+            padding: 30px;
             display: flex;
             align-items: center;
-            gap: 20px;
-            backdrop-filter: blur(10px);
-            animation: slideIn 0.5s ease-out;
+            gap: 30px;
+            backdrop-filter: blur(20px);
+            animation: slideIn 0.8s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
-            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .pulse-card:hover {
+            transform: scale(1.02);
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: translateX(-30px); }
+            to { opacity: 1; transform: translateX(0); }
         }
 
         .pulse-card.milestone {
-            border-color: var(--accent-color);
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+            border-left: 4px solid var(--accent-color);
+            box-shadow: var(--glow);
+        }
+
+        .sprite-wrapper {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            flex-shrink: 0;
         }
 
         .sprite {
-            width: 64px;
-            height: 64px;
-            flex-shrink: 0;
+            width: 100%;
+            height: 100%;
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
         }
 
-        .sprite-focused { background-image: url('stephen_focus.png'); }
-        .sprite-creative { background-image: url('stephen_hacker.png'); }
-        .sprite-artistic { background-image: url('stephen_artist.png'); }
-        .sprite-success { background-image: url('stephen_celebration.png'); }
-        .sprite-lanna_special { background-image: url('stephen_lanna.png'); }
-        .sprite-musician { background-image: url('stephen_synth.png'); }
-        .sprite-burlesque { background-image: url('stephen_burlesque.png'); }
-        .sprite-deer { background-image: url('stephen_deer.png'); }
-        .sprite-podcast { background-image: url('stephen_podcast.png'); }
-        .sprite-rand1 { background-image: url('stephen_rand1.png'); }
-        .sprite-rand2 { background-image: url('stephen_rand2.png'); }
-        .sprite-rand3 { background-image: url('stephen_rand3.png'); }
-        .sprite-rand4 { background-image: url('stephen_rand4.png'); }
-        .sprite-lanna { background-image: url('lanna_sprite.png'); }
-        .sprite-acam { background-image: url('acam_sprite.png'); }
+        .sprite-glitch {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-size: contain;
+            opacity: 0.3;
+            mix-blend-mode: color-dodge;
+            animation: spriteGlitch 3s infinite;
+            display: none;
+        }
+
+        @keyframes spriteGlitch {
+            0% { transform: translate(0); }
+            2% { transform: translate(2px, -2px); filter: hue-rotate(90deg); }
+            4% { transform: translate(-2px, 2px); }
+            6% { transform: translate(0); }
+        }
 
         .details {
             flex-grow: 1;
@@ -138,61 +163,79 @@
 
         .action-label {
             font-family: var(--font-display);
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin: 0 0 4px 0;
+            font-size: 1.8rem;
+            font-weight: 500;
+            margin: 0 0 8px 0;
             display: block;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        .project-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .project-name {
             font-family: var(--font-mono);
-            font-size: 0.9rem;
-            opacity: 0.7;
+            font-size: 0.75rem;
+            color: var(--accent-color);
+            letter-spacing: 2px;
             text-transform: uppercase;
+            background: rgba(255,255,255,0.03);
+            padding: 4px 10px;
+            border-radius: 2px;
         }
 
         .timestamp {
-            font-size: 0.75rem;
-            opacity: 0.4;
-            margin-top: 8px;
-        }
-
-        .badge {
-            position: absolute;
-            top: 12px;
-            right: 12px;
+            font-family: var(--font-mono);
             font-size: 0.7rem;
-            font-weight: 700;
-            background: var(--accent-color);
-            color: #000;
-            padding: 2px 8px;
-            border-radius: 4px;
+            opacity: 0.3;
             text-transform: uppercase;
         }
 
-        .status-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background: var(--accent-color);
-            border-radius: 50%;
-            margin-right: 8px;
-            box-shadow: 0 0 10px var(--accent-color);
-            animation: pulse 2s infinite;
+        .typewriter {
+            overflow: hidden;
+            border-right: 2px solid var(--accent-color);
+            white-space: nowrap;
+            animation: typing 1.5s steps(30, end), blink-caret 0.75s step-end infinite;
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.2); opacity: 0.5; }
-            100% { transform: scale(1); opacity: 1; }
+        @keyframes typing { from { width: 0 } to { width: 100% } }
+        @keyframes blink-caret { from, to { border-color: transparent } 50% { border-color: var(--accent-color); } }
+
+        .status-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            margin-right: 15px;
+            box-shadow: 0 0 15px var(--accent-color);
+            vertical-align: middle;
+        }
+
+        /* BACKGROUND DECORATION */
+        .grid-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: linear-gradient(var(--border-color) 1px, transparent 1px), 
+                              linear-gradient(90deg, var(--border-color) 1px, transparent 1px);
+            background-size: 100px 100px;
+            opacity: 0.2;
+            pointer-events: none;
+            z-index: 1;
         }
     </style>
 </head>
 <body>
+    <div class="grid-overlay"></div>
     <header>
+        <div class="header-bg" id="header-glow"></div>
         <div id="live-indicator">
             <span class="status-dot"></span>
-            <h1>Studio Pulse</h1>
+            <h1>Studio Pulse // Live Feed</h1>
         </div>
     </header>
 
@@ -203,7 +246,6 @@
     </div>
 
     <script>
-        // REPLACE THESE WITH YOUR ACTUAL KEYS OR USE ENVIRONMENT VARIABLES
         const supabaseUrl = 'https://dzgyqrnmsnhqaiqthzok.supabase.co';
         const supabaseKey = 'sb_publishable_TZOHRPfCaaV1AyIVErNknw_IzEsmhtQ'; 
         const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
@@ -214,96 +256,77 @@
             const name = projectName.toUpperCase();
             if (name.includes('LANNA')) return 'theme-lanna';
             if (name.includes('A-CAM')) return 'theme-acam';
-            return '';
+            if (name.includes('SCARLETT')) return 'theme-scarlett';
+            return 'theme-focused';
         }
 
         function getSpriteClass(data) {
             const name = data.project_name.toUpperCase();
             const action = (data.action_label || '').toUpperCase();
-
-            // 1. Specialized Project Sprites
             if (name.includes('LANNA')) return 'sprite-lanna_special';
             if (name.includes('SCARLETT')) return 'sprite-burlesque';
             if (name.includes('DEER')) return 'sprite-deer';
             if (name.includes('DFP')) return 'sprite-podcast';
-            if (name.includes('RANDOM')) {
-                // Use the timestamp to pick a consistent random sprite for this card
-                const seed = new Date(data.created_at).getTime() || Math.random() * 1000;
-                const randNum = (Math.floor(seed) % 4) + 1;
-                return `sprite-rand${randNum}`;
-            }
-            if (name.includes('BLUE CHROMATIC TRIANGLE') || action.includes('AUDIO') || action.includes('MUSICAL')) {
-                return 'sprite-musician';
-            }
-            
-            // 2. Prioritize General Stephen Sprites by Mood
-            if (data.mood_tag) {
-                return `sprite-${data.mood_tag}`;
-            }
-            
-            // 3. Fallback to Project Sprites
-            if (name.includes('A-CAM')) return 'sprite-acam';
-            return 'sprite-default';
+            if (data.mood_tag) return `sprite-${data.mood_tag}`;
+            return 'sprite-focus';
         }
 
-        function createPulseCard(data) {
+        function createPulseCard(data, isInitial = false) {
             const card = document.createElement('div');
             card.className = `pulse-card ${data.is_milestone ? 'milestone' : ''}`;
             
-            const time = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Use the permanent database timestamp!
+            const timeObj = data.created_at ? new Date(data.created_at) : new Date();
+            const timeStr = timeObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const labelClass = isInitial ? 'action-label' : 'action-label typewriter';
             
             card.innerHTML = `
-                <div class="sprite ${getSpriteClass(data)}"></div>
-                <div class="details">
-                    <span class="action-label">${data.action_label}</span>
-                    <span class="project-name">${data.project_name}</span>
-                    <div class="timestamp">${time}</div>
+                <div class="sprite-wrapper">
+                    <div class="sprite ${getSpriteClass(data)}"></div>
+                    <div class="sprite-glitch ${getSpriteClass(data)}"></div>
                 </div>
-                ${data.is_milestone ? '<div class="badge">Milestone</div>' : ''}
+                <div class="details">
+                    <div class="project-meta">
+                        <span class="project-name">${data.project_name}</span>
+                        <span class="timestamp">${timeStr}</span>
+                    </div>
+                    <span class="${labelClass}">${data.action_label}</span>
+                </div>
             `;
             
             return card;
         }
 
-        const displayedPulseFingerprints = new Set();
+        const displayedPulseIds = new Set();
 
-        function updateUI(data) {
-            if (!data.id) return;
+        function updateUI(data, isInitial = false) {
+            if (!data.id || displayedPulseIds.has(data.id)) return;
+            displayedPulseIds.add(data.id);
             
-            // Create a unique fingerprint: Project + Action + Rounded Time (to the minute)
-            const timeObj = new Date(data.created_at || Date.now());
-            const roundedTime = timeObj.toISOString().substring(0, 16); // "YYYY-MM-DDTHH:mm"
-            const fingerprint = `${data.project_name}|${data.action_label}|${roundedTime}`;
-            
-            if (displayedPulseFingerprints.has(fingerprint)) return;
-            displayedPulseFingerprints.add(fingerprint);
-            
-            // Update Theme
             document.body.className = getThemeClass(data.project_name);
             
-            // Add new card to top
-            const newCard = createPulseCard(data);
+            const newCard = createPulseCard(data, isInitial);
             streamContainer.prepend(newCard);
             
-            // Keep only last 10
-            if (streamContainer.children.length > 10) {
-                const lastCard = streamContainer.lastChild;
-                streamContainer.removeChild(lastCard);
+            if (streamContainer.children.length > 8) {
+                streamContainer.removeChild(streamContainer.lastChild);
             }
         }
 
-        // 1. Get Initial History
-        supabaseClient.from('studio_heartbeat').select('*').order('id', { ascending: false }).limit(10)
+        // 1. Initial Load (History)
+        supabaseClient.from('studio_heartbeat')
+            .select('*')
+            .order('created_at', { ascending: false }) // Use the new column!
+            .limit(8)
             .then(({data}) => { 
-                if(data && data.length > 0) {
-                    data.reverse().forEach(pulse => updateUI(pulse));
-                }
+                if(data) data.reverse().forEach(pulse => updateUI(pulse, true));
             });
 
-        // 2. Listen for Real-time pings
+        // 2. Real-time Subscription
         supabaseClient.channel('public:studio_heartbeat')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'studio_heartbeat' }, payload => {
-                updateUI(payload.new);
+                updateUI(payload.new, false);
             }).subscribe();
     </script>
 </body>
