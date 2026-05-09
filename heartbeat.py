@@ -31,6 +31,8 @@ IGNORE_FILES = [
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 8.0 # Seconds to wait for file system silence
+DAILY_BUFFER_LIMIT = 8  # Safe limit for Free Plan
+QUOTA_FILE = "buffer_quota.json"
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
@@ -93,7 +95,28 @@ def get_project_name(file_path):
     except:
         return "Studio Project"
 
-def broadcast_to_buffer(message, profile_id=None, asset_url=None, is_video=False):
+def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False):
+    """Broadcasts a message to a specific Buffer profile using GraphQL."""
+    # --- QUOTA CHECK ---
+    try:
+        today = datetime.now().strftime('%Y-%m-%d')
+        quota = {}
+        if os.path.exists(QUOTA_FILE):
+            with open(QUOTA_FILE, 'r') as f:
+                quota = json.load(f)
+        
+        current_count = quota.get(today, 0)
+        if current_count >= DAILY_BUFFER_LIMIT:
+            log_msg(f"⚠️ [BUFFER QUOTA] Daily limit ({DAILY_BUFFER_LIMIT}) reached. Skipping social push to protect account.")
+            return
+            
+        # Increment quota
+        quota[today] = current_count + 1
+        with open(QUOTA_FILE, 'w') as f:
+            json.dump(quota, f)
+    except Exception as e:
+        log_msg(f"[QUOTA ERROR] {e}")
+
     if not BUFFER_TOKEN or not profile_id or "your_buffer" in BUFFER_TOKEN:
         log_msg("Buffer credentials or Profile ID missing. Skipping broadcast.")
         return
