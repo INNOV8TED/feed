@@ -300,15 +300,17 @@
                 padding: 0;
                 display: flex;
                 align-items: center; /* PERFECT VERTICAL CENTER */
+                justify-content: center;
                 overflow-x: auto;
                 overflow-y: hidden;
             }
             #stream { 
-                height: 60vh; /* FIXED HEIGHT FOR BALANCED LOOK */
+                height: 70vh; /* CINEMATIC TALLNESS */
                 padding: 0 10vw;
                 display: flex;
                 align-items: center;
                 gap: 40px;
+                justify-content: center; /* ADDED */
             }
             .column { 
                 min-width: 80vw; 
@@ -319,6 +321,7 @@
             }
             .pulse-card { 
                 height: 100%;
+                width: 100%;
                 flex-direction: column; 
                 text-align: left; 
                 justify-content: space-between;
@@ -335,7 +338,7 @@
                 letter-spacing: 5px; 
             }
         }
-        /* FORCE_DEPLOY_SYNC_V6 */
+        /* FORCE_DEPLOY_SYNC_V7 */
     </style>
 </head>
 <body>

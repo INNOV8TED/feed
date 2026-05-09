@@ -224,66 +224,38 @@ class HeartbeatHandler(FileSystemEventHandler):
             pending_timers[debounce_key] = timer
             timer.start()
 
-# --- HELPER FUNCTIONS ---
-QUOTES = [
-    "Plans are nothing; planning is everything. – Eisenhower",
-    "Creativity is intelligence having fun. – Einstein",
-    "Simplicity is the ultimate sophistication. – Da Vinci",
-    "Design is not just what it looks like and feels like. Design is how it works. – Jobs",
-    "The best way to predict the future is to create it. – Peter Drucker",
-    "Make it simple, but significant. – Don Draper",
-    "Creativity is a wild mind and a disciplined eye. – Dorothy Parker"
-]
-
-def get_random_quote():
-    return QUOTES[int(time.time()) % len(QUOTES)]
-
-def capture_screenshot():
-    """Captures the current workstation screen as a 'Live Interface' snapshot."""
-    try:
-        screenshot = pyautogui.screenshot()
-        # Downscale for performance
-        screenshot = screenshot.resize((1280, 720))
-        filename = f"screenshot_{int(time.time())}.jpg"
-        screenshot.save(filename, "JPEG", quality=70)
-        return filename
-    except Exception as e:
-        print(f"Screenshot capture failed: {e}")
-        return None
-
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
-        
-        # COOLDOWN (Burst Mode: 5s)
-        cooldown_key = f"{project_name}_{workflow['label']}"
-        current_time = time.time()
-        if cooldown_key in last_sent_cache:
-            if current_time - last_sent_cache[cooldown_key] < 5:
-                return
-        
-        last_sent_cache[cooldown_key] = current_time
-        
-        # 1. GENERATE DATA
-        ext = os.path.splitext(file_path)[1].lower().strip()
-        mood = workflow['mood']
-        quote = get_random_quote()
-
-        software_map = {
-            ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
-            ".wav": "Ableton Live", ".mp4": "Media Encoder", ".mov": "DaVinci Resolve",
-            ".png": "Graphic Engine", ".jpg": "Graphic Engine"
-        }
-        software = software_map.get(ext, "Creative Engine")
-
-        data = {
-            "project_name": project_name,
-            "action_label": workflow["label"],
-            "mood_tag": f"{mood}|Neural link active.||{software}|{quote}", 
-            "source": "Windows-Workstation",
-            "is_milestone": (ext == ".mp4")
-        }
-        
         try:
+            # COOLDOWN (Burst Mode: 5s)
+            cooldown_key = f"{project_name}_{workflow['label']}"
+            current_time = time.time()
+            if cooldown_key in last_sent_cache:
+                if current_time - last_sent_cache[cooldown_key] < 5:
+                    return
+            
+            last_sent_cache[cooldown_key] = current_time
+            
+            # 1. GENERATE DATA
+            ext = os.path.splitext(file_path)[1].lower().strip()
+            mood = workflow['mood']
+            quote = get_random_quote()
+
+            software_map = {
+                ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
+                ".wav": "Ableton Live", ".mp4": "Media Encoder", ".mov": "DaVinci Resolve",
+                ".png": "Graphic Engine", ".jpg": "Graphic Engine"
+            }
+            software = software_map.get(ext, "Creative Engine")
+
+            data = {
+                "project_name": project_name,
+                "action_label": workflow["label"],
+                "mood_tag": f"{mood}|Neural link active.||{software}|{quote}", 
+                "source": "Windows-Workstation",
+                "is_milestone": (ext == ".mp4")
+            }
+            
             # 2. INSTANT SYNC
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
             res = supabase.table("studio_heartbeat").insert(data).execute()
@@ -342,6 +314,33 @@ def capture_screenshot():
             print(f"Uploaded to Studio Assets: {storage_path}")
         except Exception as e:
             print(f"Storage upload error: {e}")
+
+# --- HELPER FUNCTIONS ---
+QUOTES = [
+    "Plans are nothing; planning is everything. – Eisenhower",
+    "Creativity is intelligence having fun. – Einstein",
+    "Simplicity is the ultimate sophistication. – Da Vinci",
+    "Design is not just what it looks like and feels like. Design is how it works. – Jobs",
+    "The best way to predict the future is to create it. – Peter Drucker",
+    "Make it simple, but significant. – Don Draper",
+    "Creativity is a wild mind and a disciplined eye. – Dorothy Parker"
+]
+
+def get_random_quote():
+    return QUOTES[int(time.time()) % len(QUOTES)]
+
+def capture_screenshot():
+    """Captures the current workstation screen as a 'Live Interface' snapshot."""
+    try:
+        screenshot = pyautogui.screenshot()
+        # Downscale for performance
+        screenshot = screenshot.resize((1280, 720))
+        filename = f"screenshot_{int(time.time())}.jpg"
+        screenshot.save(filename, "JPEG", quality=70)
+        return filename
+    except Exception as e:
+        log_msg(f"Screenshot capture failed: {e}")
+        return None
 
 if __name__ == "__main__":
     while True:
