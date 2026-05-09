@@ -142,11 +142,25 @@ def broadcast_to_buffer(message):
     except Exception as e:
         print("Buffer broadcast script error (likely console encoding related). Check Buffer UI.")
 
+# --- SUPABASE HARDENING ---
+def get_supabase_client():
+    try:
+        return create_client(URL, KEY)
+    except Exception as e:
+        print(f"Supabase Client Init Error: {e}")
+        return None
+
+supabase = get_supabase_client()
+
 class HeartbeatHandler(FileSystemEventHandler):
     def on_modified(self, event):
+        if not event.is_directory:
+            print(f"◈ [WATCHER] Change Detected: {os.path.basename(event.src_path)}")
         self.process_event(event)
         
     def on_created(self, event):
+        if not event.is_directory:
+            print(f"◈ [WATCHER] Creation Detected: {os.path.basename(event.src_path)}")
         self.process_event(event)
 
     def process_event(self, event):
@@ -163,7 +177,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         # DEBUG LOGGING (UTF-8)
         try:
             with open("heartbeat.log", "a", encoding='utf-8') as f:
-                f.write(f"[{time.ctime()}] Event: {event.event_type} | Path: {file_path}\n")
+                f.write(f"[{time.ctime()}] Watchdog Event: {event.event_type} | Path: {file_path}\n")
         except: pass
 
         if ext in WORKFLOW_MAP:

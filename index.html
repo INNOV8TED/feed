@@ -295,16 +295,17 @@
 
         /* MOBILE OPTIMIZATION */
         @media (max-width: 600px) {
-            #main-container { padding: 120px 0 200px; } /* TOP AND BOTTOM SAFE ZONES */
-            .column { min-width: 90vw; padding: 0 15px; }
+            #main-container { padding: 40px 0 100px; height: 100vh; display: flex; align-items: center; } /* VERTICAL CENTER */
+            .column { min-width: 90vw; padding: 0 15px; height: 100%; justify-content: center; }
             .pulse-card { 
-                min-height: 55vh; 
+                min-height: 50vh; 
                 height: auto;
                 flex-direction: column; 
                 text-align: left; 
                 justify-content: flex-start;
                 padding: 30px;
                 gap: 20px;
+                margin-top: -60px; /* OFFSET FOR LOGO */
             }
             .sprite-wrapper { width: 90px; height: 90px; flex-shrink: 0; }
             .pulse-bg { opacity: 0.35; }
@@ -321,7 +322,7 @@
                 pointer-events: none;
             }
         }
-        /* FORCE_DEPLOY_SYNC_V3 */
+        /* FORCE_DEPLOY_SYNC_V4 */
     </style>
 </head>
 <body>
