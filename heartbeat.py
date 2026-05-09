@@ -330,10 +330,30 @@ QUOTES = [
     "Plans are nothing; planning is everything. – Eisenhower",
     "Creativity is intelligence having fun. – Einstein",
     "Simplicity is the ultimate sophistication. – Da Vinci",
-    "Design is not just what it looks like and feels like. Design is how it works. – Jobs",
+    "Design is how it works. – Steve Jobs",
     "The best way to predict the future is to create it. – Peter Drucker",
     "Make it simple, but significant. – Don Draper",
-    "Creativity is a wild mind and a disciplined eye. – Dorothy Parker"
+    "Creativity is a wild mind and a disciplined eye. – Dorothy Parker",
+    "Everything you can imagine is real. – Pablo Picasso",
+    "You can't use up creativity. The more you use, the more you have. – Maya Angelou",
+    "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away. – Saint-Exupéry",
+    "The secret to creativity is knowing how to hide your sources. – Einstein",
+    "Art is the elimination of the unnecessary. – Picasso",
+    "Don't wait for inspiration. It comes while working. – Henri Matisse",
+    "The computer is the most remarkable tool that we've ever come up with. – Steve Jobs",
+    "Creativity is piercing the mundane to find the marvelous. – Bill Moyers",
+    "Great things are done by a series of small things brought together. – Van Gogh",
+    "Art is not what you see, but what you make others see. – Edgar Degas",
+    "Logic will get you from A to B. Imagination will take you everywhere. – Einstein",
+    "There is no doubt that creativity is the most important human resource. – Edward de Bono",
+    "Innovation distinguishes between a leader and a follower. – Steve Jobs",
+    "The world is but a canvas to our imagination. – Henry David Thoreau",
+    "Music is the shorthand of emotion. – Leo Tolstoy",
+    "Where words fail, music speaks. – Hans Christian Andersen",
+    "The details are not the details. They make the design. – Charles Eames",
+    "An essential aspect of creativity is not being afraid to fail. – Edwin Land",
+    "To live a creative life, we must lose our fear of being wrong. – Joseph Chilton Pearce",
+    "Creativity involves breaking out of established patterns in order to look at things in a different way. – Edward de Bono"
 ]
 
 def get_random_quote():
