@@ -173,18 +173,21 @@ def log_msg(msg):
 class HeartbeatHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if event.is_directory: return
-        filename = os.path.basename(event.src_path)
-        if filename in IGNORE_FILES: return
+        path = event.src_path.lower()
+        # IRON SEAL: Immediate suppression of internal system noise
+        if any(f in path for f in ["heartbeat.log", "heartbeat.py", "heartbeat.lock", "test_sync.py", "temp.jpg", ".git"]):
+            return
         
-        log_msg(f"◈ [WATCHER] Change: {filename}")
+        log_msg(f"◈ [WATCHER] Change: {os.path.basename(event.src_path)}")
         self.process_event(event)
         
     def on_created(self, event):
         if event.is_directory: return
-        filename = os.path.basename(event.src_path)
-        if filename in IGNORE_FILES: return
+        path = event.src_path.lower()
+        if any(f in path for f in ["heartbeat.log", "heartbeat.py", "heartbeat.lock", "test_sync.py", "temp.jpg", ".git"]):
+            return
         
-        log_msg(f"◈ [WATCHER] Created: {filename}")
+        log_msg(f"◈ [WATCHER] Created: {os.path.basename(event.src_path)}")
         self.process_event(event)
 
     def process_event(self, event):
