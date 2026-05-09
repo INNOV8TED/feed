@@ -248,31 +248,7 @@ def capture_screenshot():
         
         # 1. RUN ASYNC SCREENSHOT & UPLOAD (Total isolation)
         def async_imaging_task():
-            ext = os.path.splitext(file_path)[1].lower()
-            asset_file = capture_screenshot()
-            
-            # Fallback to local image
-            if not asset_file:
-                try:
-                    parent_dir = os.path.dirname(file_path)
-                    images = [os.path.join(parent_dir, f) for f in os.listdir(parent_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
-                    if images:
-                        asset_file = max(images, key=os.path.getmtime)
-                except: pass
-
-            asset_url = None
-            if asset_file:
-                try:
-                    with open(asset_file, 'rb') as f:
-                        file_ext = os.path.splitext(asset_file)[1]
-                        storage_path = f"pulses/{int(time.time())}{file_ext}"
-                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
-                        asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-                    if "screenshot_" in asset_file and os.path.exists(asset_file):
-                        os.remove(asset_file)
-                except: pass
-
-            # 2. GENERATE DATA & SYNC
+            # 2. GENERATE DATA & SYNC (IMMEDIATE)
             mood = workflow['mood']
             narratives = {
                 "focused": ["Neural link stable. Processing assets...", "Deep in the flow state.", "Optimizing production pipeline."],
@@ -294,19 +270,49 @@ def capture_screenshot():
             data = {
                 "project_name": project_name,
                 "action_label": workflow["label"],
-                "mood_tag": f"{mood}|{sub_label}|{asset_url or ''}|{software}|{quote}", 
+                "mood_tag": f"{mood}|{sub_label}||{software}|{quote}", # Placeholder image
                 "source": "Windows-Workstation",
                 "is_milestone": (ext == ".mp4")
             }
             
             try:
-                supabase.table("studio_heartbeat").insert(data).execute()
-                print(f"◈ Pulse Sent: {project_name} | {workflow['label']} | via {software} [ASYNC VISION]")
+                # INSTANT INSERT
+                res = supabase.table("studio_heartbeat").insert(data).execute()
+                pulse_id = res.data[0]['id']
+                print(f"◈ [SYNC] Data pulse sent! ID: {pulse_id}")
+                
+                # 3. BACKGROUND IMAGING (FOLLOW-UP)
+                asset_file = capture_screenshot()
+                if not asset_file:
+                    try:
+                        parent_dir = os.path.dirname(file_path)
+                        images = [os.path.join(parent_dir, f) for f in os.listdir(parent_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
+                        if images:
+                            asset_file = max(images, key=os.path.getmtime)
+                    except: pass
+
+                if asset_file:
+                    with open(asset_file, 'rb') as f:
+                        file_ext = os.path.splitext(asset_file)[1]
+                        storage_path = f"pulses/{pulse_id}{file_ext}"
+                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                        asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                        
+                        # UPDATE EXISTING PULSE WITH IMAGE
+                        supabase.table("studio_heartbeat").update({"mood_tag": f"{mood}|{sub_label}|{asset_url}|{software}|{quote}"}).eq("id", pulse_id).execute()
+                        print(f"◈ [SYNC] Image telemetry added to pulse {pulse_id}")
+                    
+                    if "screenshot_" in asset_file and os.path.exists(asset_file):
+                        os.remove(asset_file)
+
                 if data["is_milestone"]:
                     msg = f"🚀 Project Delivered! #{project_name} export complete. View the live pulse: feed.in-no-v8.com"
                     broadcast_to_buffer(msg)
+                    
             except Exception as e:
-                print(f"Sync error: {e}")
+                print(f"◈ [SYNC ERROR] {e}")
+                with open("heartbeat.log", "a", encoding='utf-8') as f:
+                    f.write(f"[{time.ctime()}] Sync Error: {e}\n")
 
         # LAUNCH ASYNC TASK
         threading.Thread(target=async_imaging_task).start()
