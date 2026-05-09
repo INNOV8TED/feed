@@ -246,42 +246,43 @@ def capture_screenshot():
         
         last_sent_cache[cooldown_key] = current_time
         
-        # 1. RUN ASYNC SCREENSHOT & UPLOAD (Total isolation)
-        def async_imaging_task():
-            # 2. GENERATE DATA & SYNC (IMMEDIATE)
-            mood = workflow['mood']
-            narratives = {
-                "focused": ["Neural link stable. Processing assets...", "Deep in the flow state.", "Optimizing production pipeline."],
-                "creative": ["Synthesizing new realities.", "Exploring visual frontiers.", "Hacking the aesthetic."],
-                "artistic": ["Refining the master stroke.", "Color grade finalized.", "Artistic vision manifesting."],
-                "success": ["Milestone reached. Export complete.", "Finalizing delivery.", "Project output successful."],
-                "musical": ["Harmonizing frequencies.", "Synthesizer link established.", "Audio pipeline clear."]
-            }
-            sub_label = narratives.get(mood, ["Active in the studio."])[int(time.time()) % 3]
-            quote = get_random_quote()
+        # 1. GENERATE DATA
+        ext = os.path.splitext(file_path)[1].lower()
+        mood = workflow['mood']
+        narratives = {
+            "focused": ["Neural link stable. Processing assets...", "Deep in the flow state.", "Optimizing production pipeline."],
+            "creative": ["Synthesizing new realities.", "Exploring visual frontiers.", "Hacking the aesthetic."],
+            "artistic": ["Refining the master stroke.", "Color grade finalized.", "Artistic vision manifesting."],
+            "success": ["Milestone reached. Export complete.", "Finalizing delivery.", "Project output successful."],
+            "musical": ["Harmonizing frequencies.", "Synthesizer link established.", "Audio pipeline clear."]
+        }
+        sub_label = narratives.get(mood, ["Active in the studio."])[int(time.time()) % 3]
+        quote = get_random_quote()
 
-            software_map = {
-                ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
-                ".wav": "Ableton Live", ".mp4": "Media Encoder", ".mov": "DaVinci Resolve",
-                ".png": "Graphic Engine", ".jpg": "Graphic Engine"
-            }
-            software = software_map.get(ext, "Creative Engine")
+        software_map = {
+            ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
+            ".wav": "Ableton Live", ".mp4": "Media Encoder", ".mov": "DaVinci Resolve",
+            ".png": "Graphic Engine", ".jpg": "Graphic Engine"
+        }
+        software = software_map.get(ext, "Creative Engine")
 
-            data = {
-                "project_name": project_name,
-                "action_label": workflow["label"],
-                "mood_tag": f"{mood}|{sub_label}||{software}|{quote}", # Placeholder image
-                "source": "Windows-Workstation",
-                "is_milestone": (ext == ".mp4")
-            }
+        data = {
+            "project_name": project_name,
+            "action_label": workflow["label"],
+            "mood_tag": f"{mood}|{sub_label}||{software}|{quote}", 
+            "source": "Windows-Workstation",
+            "is_milestone": (ext == ".mp4")
+        }
+        
+        try:
+            # 2. INSTANT SYNC (Main Thread for absolute reliability)
+            print(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
+            res = supabase.table("studio_heartbeat").insert(data).execute()
+            pulse_id = res.data[0]['id']
+            print(f">>> [SYNC] SUCCESS! Pulse ID: {pulse_id}")
             
-            try:
-                # INSTANT INSERT
-                res = supabase.table("studio_heartbeat").insert(data).execute()
-                pulse_id = res.data[0]['id']
-                print(f"◈ [SYNC] Data pulse sent! ID: {pulse_id}")
-                
-                # 3. BACKGROUND IMAGING (FOLLOW-UP)
+            # 3. ASYNC IMAGING (Follow-up background task)
+            def bg_imaging():
                 asset_file = capture_screenshot()
                 if not asset_file:
                     try:
@@ -292,30 +293,30 @@ def capture_screenshot():
                     except: pass
 
                 if asset_file:
-                    with open(asset_file, 'rb') as f:
-                        file_ext = os.path.splitext(asset_file)[1]
-                        storage_path = f"pulses/{pulse_id}{file_ext}"
-                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
-                        asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                    try:
+                        with open(asset_file, 'rb') as f:
+                            file_ext = os.path.splitext(asset_file)[1]
+                            storage_path = f"pulses/{pulse_id}{file_ext}"
+                            supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                            asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                            
+                            supabase.table("studio_heartbeat").update({"mood_tag": f"{mood}|{sub_label}|{asset_url}|{software}|{quote}"}).eq("id", pulse_id).execute()
+                            print(f">>> [SYNC] Telemetry Image Updated for {pulse_id}")
                         
-                        # UPDATE EXISTING PULSE WITH IMAGE
-                        supabase.table("studio_heartbeat").update({"mood_tag": f"{mood}|{sub_label}|{asset_url}|{software}|{quote}"}).eq("id", pulse_id).execute()
-                        print(f"◈ [SYNC] Image telemetry added to pulse {pulse_id}")
-                    
-                    if "screenshot_" in asset_file and os.path.exists(asset_file):
-                        os.remove(asset_file)
+                        if "screenshot_" in asset_file and os.path.exists(asset_file):
+                            os.remove(asset_file)
+                    except: pass
 
-                if data["is_milestone"]:
-                    msg = f"🚀 Project Delivered! #{project_name} export complete. View the live pulse: feed.in-no-v8.com"
-                    broadcast_to_buffer(msg)
-                    
-            except Exception as e:
-                print(f"◈ [SYNC ERROR] {e}")
-                with open("heartbeat.log", "a", encoding='utf-8') as f:
-                    f.write(f"[{time.ctime()}] Sync Error: {e}\n")
+            threading.Thread(target=bg_imaging).start()
 
-        # LAUNCH ASYNC TASK
-        threading.Thread(target=async_imaging_task).start()
+            if data["is_milestone"]:
+                msg = f"🚀 Project Delivered! #{project_name} export complete. View the live pulse: feed.in-no-v8.com"
+                broadcast_to_buffer(msg)
+                
+        except Exception as e:
+            print(f">>> [SYNC ERROR] {e}")
+            with open("heartbeat.log", "a", encoding='utf-8') as f:
+                f.write(f"[{time.ctime()}] Sync Error: {e}\n")
 
     def upload_to_supabase_storage(self, file_path):
         """Upload a milestone image to Supabase Storage."""

@@ -295,34 +295,49 @@
 
         /* MOBILE OPTIMIZATION */
         @media (max-width: 600px) {
-            #main-container { padding: 40px 0 100px; height: 100vh; display: flex; align-items: center; } /* VERTICAL CENTER */
-            .column { min-width: 90vw; padding: 0 15px; height: 100%; justify-content: center; }
+            #main-container { 
+                padding: 15vh 0 25vh; 
+                overflow-x: auto; 
+                display: block; 
+            }
+            #stream { 
+                height: auto; 
+                padding: 0 5vw; 
+                align-items: flex-start;
+            }
+            .column { 
+                min-width: 85vw; 
+                padding: 0 10px; 
+                height: auto; 
+                justify-content: flex-start;
+                display: flex;
+            }
             .pulse-card { 
-                min-height: 50vh; 
+                width: 100%;
+                min-height: 45vh; 
                 height: auto;
                 flex-direction: column; 
                 text-align: left; 
                 justify-content: flex-start;
-                padding: 30px;
-                gap: 20px;
-                margin-top: -60px; /* OFFSET FOR LOGO */
+                padding: 25px;
+                gap: 15px;
             }
-            .sprite-wrapper { width: 90px; height: 90px; flex-shrink: 0; }
+            .sprite-wrapper { width: 80px; height: 80px; flex-shrink: 0; }
             .pulse-bg { opacity: 0.35; }
             #info-panel { width: 100vw; left: -100vw; z-index: 3000; }
             #info-panel.open { transform: translateX(100vw); }
-            #info-toggle { top: 30px; left: 30px; font-size: 0.7em; z-index: 2500; }
-            #nexus-link { width: 120px; bottom: 30px; left: 30px; z-index: 2500; }
+            #info-toggle { top: 25px; left: 25px; font-size: 0.7em; z-index: 2500; }
+            #nexus-link { width: 100px; bottom: 25px; left: 25px; z-index: 2500; }
             #page-title { 
                 position: fixed; 
-                top: 35px; right: 30px; 
-                font-size: 0.7em; 
-                letter-spacing: 5px; 
+                top: 30px; right: 25px; 
+                font-size: 0.6em; 
+                letter-spacing: 4px; 
                 z-index: 2500;
                 pointer-events: none;
             }
         }
-        /* FORCE_DEPLOY_SYNC_V4 */
+        /* FORCE_DEPLOY_SYNC_V5 */
     </style>
 </head>
 <body>
