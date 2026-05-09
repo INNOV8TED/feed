@@ -80,55 +80,53 @@ class handler(BaseHTTPRequestHandler):
                     else:
                         regular_images.append(url)
             
+            print(f"Found {len(hero_images)} HERO images and {len(regular_images)} regular/magazine images.")
+            
             # Load images
-            source_images = []
             bg_image = None
-            
-            # Pick a Hero for the background if possible
             if hero_images:
-                r = requests.get(random.choice(hero_images))
-                bg_image = Image.open(BytesIO(r.content)).convert("RGBA")
+                hero_url = random.choice(hero_images)
+                print(f"Selecting HERO: {hero_url}")
+                bg_image = Image.open(BytesIO(requests.get(hero_url).content)).convert("RGBA")
+            elif regular_images:
+                reg_url = random.choice(regular_images)
+                print(f"Selecting Regular as Base: {reg_url}")
+                bg_image = Image.open(BytesIO(requests.get(reg_url).content)).convert("RGBA")
             
-            # Load support images
+            # 4. Assemble Collage
+            canvas = Image.new("RGBA", (WIDTH, HEIGHT), (10, 10, 15, 255))
+            draw = ImageDraw.Draw(canvas)
+            
+            # 4a. Draw Cinematic Fallback Gradient (Top to Bottom)
+            for i in range(HEIGHT):
+                r = int(10 + (20 - 10) * i / HEIGHT)
+                g = int(10 + (25 - 10) * i / HEIGHT)
+                b = int(15 + (35 - 15) * i / HEIGHT)
+                draw.line([(0, i), (WIDTH, i)], fill=(r, g, b, 255))
+
+            # 4b. Draw Base Image
+            if bg_image:
+                print("Pasting base image...")
+                scale = max(WIDTH/bg_image.width, HEIGHT/bg_image.height)
+                bg_image = bg_image.resize((int(bg_image.width*scale), int(bg_image.height*scale)))
+                canvas.paste(bg_image, ((WIDTH-bg_image.width)//2, (HEIGHT-bg_image.height)//2))
+                tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,100))
+                canvas.paste(tint, (0,0), tint)
+            
+            # 4b. Draw Supporting Collage
             random.shuffle(regular_images)
             for url in regular_images[:10]:
-                r = requests.get(url)
-                if r.status_code == 200:
-                    source_images.append(Image.open(BytesIO(r.content)).convert("RGBA"))
-        except:
-            source_images = []
-            bg_image = None
-
-        # 4. Assemble Collage
-        canvas = Image.new("RGBA", (WIDTH, HEIGHT), (10, 10, 15, 255))
-        draw = ImageDraw.Draw(canvas)
-        
-        # 4a. Draw Cinematic Fallback Gradient (Top to Bottom)
-        for i in range(HEIGHT):
-            r = int(10 + (20 - 10) * i / HEIGHT)
-            g = int(10 + (25 - 10) * i / HEIGHT)
-            b = int(15 + (35 - 15) * i / HEIGHT)
-            draw.line([(0, i), (WIDTH, i)], fill=(r, g, b, 255))
-
-        # 4b. Draw Base Image
-        if bg_image:
-            scale = max(WIDTH/bg_image.width, HEIGHT/bg_image.height)
-            bg_image = bg_image.resize((int(bg_image.width*scale), int(bg_image.height*scale)))
-            canvas.paste(bg_image, ((WIDTH-bg_image.width)//2, (HEIGHT-bg_image.height)//2))
-            tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,100))
-            canvas.paste(tint, (0,0), tint)
-        
-        # 4b. Draw Supporting Collage
-        if source_images:
-            for _ in range(12):
-                img = random.choice(source_images)
-                w, h = img.size
-                cw, ch = int(w * 0.8), int(h * 0.8)
-                img = img.crop((random.randint(0, w-cw), random.randint(0, h-ch), cw, ch))
-                scale = random.uniform(1.2, 2.8)
-                img = img.resize((int(img.width * scale), int(img.height * scale)))
-                img.putalpha(random.randint(120, 200))
-                canvas.paste(img, (random.randint(-200, WIDTH), random.randint(-200, HEIGHT)), img)
+                try:
+                    img = Image.open(BytesIO(requests.get(url).content)).convert("RGBA")
+                    w, h = img.size
+                    cw, ch = int(w * 0.7), int(h * 0.7)
+                    img = img.crop((random.randint(0, w-cw), random.randint(0, h-ch), w, h))
+                    scale = random.uniform(1.5, 3.5)
+                    img = img.resize((int(img.width * scale), int(img.height * scale)))
+                    img.putalpha(random.randint(100, 180))
+                    canvas.paste(img, (random.randint(-WIDTH//2, WIDTH), random.randint(-HEIGHT//2, HEIGHT)), img)
+                except:
+                    continue
 
         # 5. Dynamic Stephen Sprite Selection
         sprite_map = {
