@@ -187,27 +187,24 @@ class HeartbeatHandler(FileSystemEventHandler):
             
         file_path = event.src_path
         filename = os.path.basename(file_path)
-        ext = os.path.splitext(file_path)[1].lower()
+        ext = os.path.splitext(file_path)[1].lower().strip()
         
         if filename in IGNORE_FILES:
             return
             
-        # DEBUG LOGGING (UTF-8)
-        try:
-            with open("heartbeat.log", "a", encoding='utf-8') as f:
-                f.write(f"[{time.ctime()}] Watchdog Event: {event.event_type} | Path: {file_path}\n")
-        except: pass
+        # DEEP DEBUG
+        log_msg(f"◈ [DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
 
-        if ext in WORKFLOW_MAP:
+        # FLEXIBLE MATCHING
+        workflow = None
+        for key in WORKFLOW_MAP:
+            if ext.startswith(key):
+                workflow = WORKFLOW_MAP[key]
+                break
+
+        if workflow:
             project_name = get_project_name(file_path)
-            
-            if project_name == "PUBLISH":
-                project_name = "General Workspace"
-
-            if not project_name:
-                return
-                
-            workflow = WORKFLOW_MAP[ext]
+            log_msg(f"◈ [WATCHER] Mapping: {project_name} | {workflow['label']}")
             
             # --- DEBOUNCE LOGIC ---
             # Group events by project and label
