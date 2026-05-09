@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/roundup",
+      "path": "/api/roundup.py",
       "schedule": "0 12 * * *"
     }
   ]
