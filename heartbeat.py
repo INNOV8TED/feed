@@ -95,9 +95,9 @@ def get_project_name(file_path):
     except:
         return "Studio Project"
 
-def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False):
+def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_type="REEL"):
     """Broadcasts a message to a specific Buffer profile using GraphQL."""
-    # --- CURATED SCHEDULE: 1 POST PER CHANNEL PER DAY ---
+    # --- CURATED SCHEDULE: 1 REEL AND 1 GRID POST PER CHANNEL PER DAY ---
     try:
         today = datetime.now().strftime('%Y-%m-%d')
         quota = {}
@@ -105,16 +105,16 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False):
             with open(QUOTA_FILE, 'r') as f:
                 quota = json.load(f)
         
-        # Structure: quota[date][profile_id] = count
+        # Structure: quota[date][profile_id][post_type] = 1
         if today not in quota: quota[today] = {}
+        if profile_id not in quota[today]: quota[today][profile_id] = {}
         
-        current_count = quota[today].get(profile_id, 0)
-        if current_count >= 1: # ONLY 1 POST PER CHANNEL
-            log_msg(f"◈ [CURATED] Daily slot for channel {profile_id[-4:]} already filled. Web feed updated only.")
+        if quota[today][profile_id].get(post_type, 0) >= 1:
+            log_msg(f"◈ [CURATED] Daily {post_type} for channel {profile_id[-4:]} already filled.")
             return
             
         # Mark as sent
-        quota[today][profile_id] = 1
+        quota[today][profile_id][post_type] = 1
         with open(QUOTA_FILE, 'w') as f:
             json.dump(quota, f)
     except Exception as e:
@@ -353,22 +353,36 @@ class HeartbeatHandler(FileSystemEventHandler):
                 log_msg(">>> [SYNC ERROR] Insert failed.")
 
             # 4. ROUTE TO BUFFER
-            if data["is_milestone"]:
-                # Determine Target Channel
-                buffer_profile = BUFFER_PROFILE_ID_MAIN
-                proj_upper = project_name.upper()
-                
-                if "LANNA" in proj_upper:
-                    buffer_profile = BUFFER_PROFILE_ID_LANNA
-                elif any(x in proj_upper for x in ["BLUE", "MUSIC", "CHROMATIC", "TRIANGLE"]):
-                    buffer_profile = BUFFER_PROFILE_ID_BLUE
-                
-                msg = f"🚀 Project Update: #{project_name} | {workflow['label']} complete. View live: feed.in-no-v8.com"
-                if is_video or is_audio:
-                    media_type = "Sound" if is_audio else "Visual"
-                    msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. Live feed: feed.in-no-v8.com"
-                
-                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True) # Always True for Buffer to handle as Video
+            buffer_profile = BUFFER_PROFILE_ID_MAIN
+            proj_upper = project_name.upper()
+            if "LANNA" in proj_upper:
+                buffer_profile = BUFFER_PROFILE_ID_LANNA
+            elif any(x in proj_upper for x in ["BLUE", "MUSIC", "CHROMATIC", "TRIANGLE"]):
+                buffer_profile = BUFFER_PROFILE_ID_BLUE
+
+            if is_video or is_audio:
+                # VIDEO/AUDIO POST (REELS/SHORTS)
+                media_type = "Sound" if is_audio else "Visual"
+                msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. Live feed: feed.in-no-v8.com"
+                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True, post_type="REEL")
+            else:
+                # STATIC GRID POST (BLUEPRINT)
+                log_msg(f">>> [BLUEPRINT] Generating schematic for {project_name}...")
+                blueprint_file = generate_blueprint(asset_file)
+                if blueprint_file:
+                    try:
+                        with open(blueprint_file, 'rb') as f:
+                            storage_path = f"pulses/blueprint_{int(time.time())}.jpg"
+                            supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                            bp_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                            
+                        msg = f"◈ STUDIO BLUEPRINT: #{project_name} R&D phase active. #{software} schematic. feed.in-no-v8.com"
+                        broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=bp_url, is_video=False, post_type="GRID")
+                        
+                        # Cleanup blueprint
+                        if os.path.exists(blueprint_file): os.remove(blueprint_file)
+                    except Exception as e:
+                        log_msg(f"[BLUEPRINT SYNC ERROR] {e}")
                 
         except Exception as e:
             err_msg = traceback.format_exc()
@@ -423,6 +437,25 @@ QUOTES = [
 
 def get_random_quote():
     return QUOTES[int(time.time()) % len(QUOTES)]
+
+def generate_blueprint(input_image):
+    """Converts a screenshot into a blue/white technical blueprint schematic."""
+    try:
+        output_file = f"blueprint_temp_{int(time.time())}.jpg"
+        # FFmpeg filter: Edge detection -> Negate -> Colorkey over Blue Background
+        cmd = [
+            'ffmpeg', '-y', '-i', input_image,
+            '-filter_complex',
+            "[0:v]edgedetect=low=0.1:high=0.4,negate,format=rgba,colorkey=0xffffff:0.1:0.1[fg];"
+            "color=c=0x003366:s=1920x1080[bg];"
+            "[bg][fg]overlay=format=auto[out]",
+            '-map', '[out]', '-frames:v', '1', output_file
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_file
+    except Exception as e:
+        log_msg(f"[BLUEPRINT ERROR] {e}")
+        return None
 
 def generate_audio_visualizer(audio_path):
     """Generates a random 10-second vertical waveform video from an audio file."""
