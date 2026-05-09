@@ -172,25 +172,24 @@ def log_msg(msg):
 
 class HeartbeatHandler(FileSystemEventHandler):
     def on_modified(self, event):
-        if not event.is_directory:
-            log_msg(f"◈ [WATCHER] Change Detected: {os.path.basename(event.src_path)}")
+        if event.is_directory: return
+        filename = os.path.basename(event.src_path)
+        if filename in IGNORE_FILES: return
+        
+        log_msg(f"◈ [WATCHER] Change: {filename}")
         self.process_event(event)
         
     def on_created(self, event):
-        if not event.is_directory:
-            log_msg(f"◈ [WATCHER] Creation Detected: {os.path.basename(event.src_path)}")
+        if event.is_directory: return
+        filename = os.path.basename(event.src_path)
+        if filename in IGNORE_FILES: return
+        
+        log_msg(f"◈ [WATCHER] Created: {filename}")
         self.process_event(event)
 
     def process_event(self, event):
-        if event.is_directory:
-            return
-            
         file_path = event.src_path
-        filename = os.path.basename(file_path)
         ext = os.path.splitext(file_path)[1].lower().strip()
-        
-        if filename in IGNORE_FILES:
-            return
             
         # DEEP DEBUG
         log_msg(f"◈ [DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
