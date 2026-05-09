@@ -27,7 +27,7 @@ WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
-    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder"
+    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_"
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 8.0 # Seconds to wait for file system silence
@@ -189,7 +189,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         if event.is_directory: return
         path = event.src_path.lower()
         # IRON SEAL: Immediate suppression of internal system noise
-        if any(f in path for f in ["heartbeat.log", "heartbeat.py", "heartbeat.lock", "test_sync.py", "temp.jpg", ".git"]):
+        if any(f in path for f in IGNORE_FILES + [".git"]):
             return
         
         log_msg(f"[WATCHER] Change: {os.path.basename(event.src_path)}")
