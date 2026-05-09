@@ -17,9 +17,18 @@ class handler(BaseHTTPRequestHandler):
         BUFFER_PROFILE_ID = os.environ.get("BUFFER_PROFILE_ID")
         WIDTH, HEIGHT = 1080, 1920
         
-        if not all([SUPABASE_URL, SUPABASE_KEY, BUFFER_TOKEN, BUFFER_PROFILE_ID]):
+        # Diagnostics
+        missing = []
+        if not SUPABASE_URL: missing.append("SUPABASE_URL")
+        if not SUPABASE_KEY: missing.append("SUPABASE_KEY")
+        if not BUFFER_TOKEN: missing.append("BUFFER_TOKEN")
+        if not BUFFER_PROFILE_ID: missing.append("BUFFER_PROFILE_ID")
+
+        if missing:
             self.send_response(500)
-            self.wfile.write(b"Missing environment variables.")
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(f"Missing environment variables: {', '.join(missing)}".encode())
             return
 
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -93,7 +102,6 @@ class handler(BaseHTTPRequestHandler):
             scale = max(WIDTH/bg_image.width, HEIGHT/bg_image.height)
             bg_image = bg_image.resize((int(bg_image.width*scale), int(bg_image.height*scale)))
             canvas.paste(bg_image, ((WIDTH-bg_image.width)//2, (HEIGHT-bg_image.height)//2))
-            # Overlay a slight dark tint
             tint = Image.new("RGBA", (WIDTH, HEIGHT), (0,0,0,100))
             canvas.paste(tint, (0,0), tint)
         
@@ -117,7 +125,7 @@ class handler(BaseHTTPRequestHandler):
             "DFP": "stephen_podcast.png",
             "BLUE CHROMATIC": "stephen_synth.png"
         }
-        sprite_file = "stephen_focus.png" # Default
+        sprite_file = "stephen_focus.png"
         for key, val in sprite_map.items():
             if key in dominant_project:
                 sprite_file = val
