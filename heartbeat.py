@@ -193,17 +193,31 @@ class HeartbeatHandler(FileSystemEventHandler):
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
         
-        # DEBOUNCE & COOLDOWN
+        # DEBOUNCE & COOLDOWN (Tuned for responsiveness)
+        cooldown_key = f"{project_name}_{workflow['label']}"
         current_time = time.time()
-        if project_name in last_sent_cache:
-            if current_time - last_sent_cache[project_name] < COOLDOWN_SECONDS:
+        if cooldown_key in last_sent_cache:
+            if current_time - last_sent_cache[cooldown_key] < 30: # 30s cooldown
                 return
         
-        last_sent_cache[project_name] = current_time
+        last_sent_cache[cooldown_key] = current_time
         
         ext = os.path.splitext(file_path)[1].lower()
         
-        # CAPTURE RECENT ASSET (Find latest image in the folder)
+        # SOFTWARE DETECTION
+        software_map = {
+            ".prproj": "Premiere Pro",
+            ".psd": "Photoshop",
+            ".aep": "After Effects",
+            ".wav": "Ableton Live",
+            ".mp4": "Media Encoder",
+            ".mov": "DaVinci Resolve",
+            ".png": "Graphic Engine",
+            ".jpg": "Graphic Engine"
+        }
+        software = software_map.get(ext, "Creative Engine")
+
+        # CAPTURE RECENT ASSET
         asset_url = None
         try:
             parent_dir = os.path.dirname(file_path)
@@ -233,14 +247,14 @@ class HeartbeatHandler(FileSystemEventHandler):
         data = {
             "project_name": project_name,
             "action_label": workflow["label"],
-            "mood_tag": f"{mood}|{sub_label}|{asset_url or ''}", # Pack extra data here
+            "mood_tag": f"{mood}|{sub_label}|{asset_url or ''}|{software}", # Pack software too
             "source": "Windows-Workstation",
             "is_milestone": (ext == ".mp4")
         }
         
         try:
             supabase.table("studio_heartbeat").insert(data).execute()
-            print(f"◈ Pulse Sent: {project_name} | {workflow['label']}")
+            print(f"◈ Pulse Sent: {project_name} | {workflow['label']} | via {software}")
             
             # If milestone, broadcast to Buffer
             if data["is_milestone"]:

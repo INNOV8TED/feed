@@ -293,12 +293,14 @@
 
         let currentColumn = null;
         let pulseInColumn = 0;
+        let lastDateString = null;
 
         function createPulseCard(data, isInitial = false) {
             const parts = (data.mood_tag || '').split('|');
             const mood = parts[0] || 'focused';
             const subLabel = parts[1] || 'Neural link stable.';
             const imageUrl = parts[2] || '';
+            const software = parts[3] || 'Creative Engine';
 
             const timeStr = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
@@ -316,17 +318,37 @@
                     </div>
                     <div class="pulse-label">${data.action_label}</div>
                     <div class="pulse-sub-label">◈ ${subLabel}</div>
+                    <div style="font-size: 0.65em; opacity: 0.3; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; font-family: 'Space Mono';">
+                        Engine: ${software}
+                    </div>
                 </div>
             `;
             return card;
+        }
+
+        function createDateDivider(dateStr) {
+            const col = document.createElement('div');
+            col.className = 'column date-divider';
+            col.style.minWidth = '200px';
+            col.style.justifyContent = 'center';
+            col.style.borderLeft = '1px dashed var(--border-color)';
+            col.innerHTML = `
+                <div style="transform: rotate(-90deg); white-space: nowrap; font-family: 'Space Mono'; color: var(--accent-color); font-size: 0.8em; letter-spacing: 5px; font-weight: 700; opacity: 0.6;">
+                    ◈ ${dateStr.toUpperCase()}
+                </div>
+            `;
+            return col;
         }
 
         const displayedPulseFingerprints = new Set();
 
         function updateUI(data, isInitial = false) {
             if (!data.id) return;
-            const timeObj = new Date(data.created_at || Date.now());
-            const roundedTime = timeObj.toISOString().substring(0, 16); 
+            const dateObj = new Date(data.created_at || Date.now());
+            const dateStr = dateObj.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+            
+            // Coarsen Fingerprint
+            const roundedTime = dateObj.toISOString().substring(0, 16); 
             const fingerprint = `${data.action_label}|${roundedTime}`;
             
             if (displayedPulseFingerprints.has(fingerprint)) return;
@@ -334,7 +356,15 @@
             
             document.body.className = getThemeClass(data.project_name);
             
-            // Manage Masonry Columns
+            // 1. Add Date Divider if needed
+            if (lastDateString !== dateStr) {
+                const divider = createDateDivider(dateStr);
+                streamContainer.prepend(divider);
+                lastDateString = dateStr;
+                currentColumn = null; // Reset column for new day
+            }
+
+            // 2. Manage Masonry Columns
             if (!currentColumn || pulseInColumn >= 2) {
                 currentColumn = document.createElement('div');
                 currentColumn.className = 'column';
@@ -345,10 +375,6 @@
             const newCard = createPulseCard(data, isInitial);
             currentColumn.prepend(newCard);
             pulseInColumn++;
-
-            if (streamContainer.children.length > 10) {
-                streamContainer.removeChild(streamContainer.lastChild);
-            }
         }
 
         async function loadInitial() {
