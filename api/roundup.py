@@ -160,6 +160,9 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(f"Storage Upload Failed: {e}".encode())
             return
+        
+        # Add a small delay to ensure the file is ready for Buffer's crawler
+        time.sleep(3)
 
         headers = {"Authorization": f"Bearer {BUFFER_TOKEN}"}
         buffer_res = requests.post("https://api.buffer.com", json={
@@ -178,10 +181,11 @@ class handler(BaseHTTPRequestHandler):
         }, headers=headers)
         
         # Log for Vercel
+        print(f"Final Image URL: {final_url}")
         print(f"Buffer Response: {buffer_res.text}")
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({"success": True, "project": dominant_project, "buffer": buffer_res.json()}).encode())
+        self.wfile.write(json.dumps({"success": True, "project": dominant_project, "card_url": final_url, "buffer": buffer_res.json()}).encode())
         return
