@@ -354,19 +354,27 @@
         #info-toggle { top: 40px; left: 40px; font-size: 0.9em; font-weight: 700; z-index: 100; }
         #page-title { 
             position: fixed; 
-            top: 45px; right: 40px; 
-            font-size: 0.7em; 
-            letter-spacing: 7px; 
-            opacity: 0.3;
+            top: 40px; right: 40px; 
+            font-size: 1.5em; 
+            font-weight: 800;
+            background: linear-gradient(45deg, #fff, var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px; 
             z-index: 100;
+            text-transform: uppercase;
         }
-        #nexus-link { 
-            position: fixed;
-            bottom: 40px; left: 40px;
-            width: 140px;
-            z-index: 100;
-            opacity: 0.9;
+        .close-panel {
+            position: absolute;
+            top: 30px; right: 30px;
+            cursor: pointer;
+            font-family: 'Space Mono';
+            font-size: 1.2em;
+            color: var(--accent-color);
+            opacity: 0.6;
+            transition: opacity 0.3s;
         }
+        .close-panel:hover { opacity: 1; }
 
         /* MOBILE OVERRIDES */
         @media (max-width: 600px) {
@@ -396,6 +404,7 @@
     </a>
 
     <div id="info-panel">
+        <div class="close-panel" onclick="togglePanel()">✕</div>
         <div class="intro-title">STUDIO PULSE</div>
         <p class="intro-text">
             This is the live neural link between the INNOV8 studio workstation and the digital world. 
