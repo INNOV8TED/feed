@@ -156,10 +156,10 @@ class HeartbeatHandler(FileSystemEventHandler):
                 supabase.table("studio_heartbeat").insert(data).execute()
                 
                 # If milestone, broadcast to social media
-                if is_milestone:
-                    # Specific message format
-                    broadcast_message = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
-                    broadcast_to_buffer(broadcast_message)
+                # if is_milestone:
+                #     # Specific message format
+                #     broadcast_message = f"🚀 New Milestone Reached in #{project_name}! Check the live pulse at feed.in-no-v8.com."
+                #     broadcast_to_buffer(broadcast_message)
                     
             except Exception as e:
                 print(f"Sync error: {e}")
