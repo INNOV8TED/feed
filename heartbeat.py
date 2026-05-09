@@ -23,7 +23,7 @@ WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
 IGNORE_FILES = ["heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg"]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
-DEBOUNCE_SECONDS = 5.0  # Increased debounce for stable logging
+DEBOUNCE_SECONDS = 8.0 # Seconds to wait for file system silence
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
@@ -31,23 +31,24 @@ last_size_cache = {}
 pending_timers = {}
 
 # --- SINGLETON LOCK ---
+import msvcrt
 LOCK_FILE = "heartbeat.lock"
-try:
-    if os.path.exists(LOCK_FILE):
-        # Check if the process is actually running (simple file existence for now, but we'll try to remove it on exit)
-        os.remove(LOCK_FILE)
-    
-    # Create the lock file
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-        
-    import atexit
-    def cleanup():
-        if os.path.exists(LOCK_FILE):
-            os.remove(LOCK_FILE)
-    atexit.register(cleanup)
-except Exception as e:
-    print(f"Singleton check failed: {e}. If this is a duplicate process, it will exit.")
+lock_file_handle = None
+
+def get_lock():
+    global lock_file_handle
+    try:
+        lock_file_handle = open(LOCK_FILE, "w")
+        msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        lock_file_handle.write(str(os.getpid()))
+        lock_file_handle.flush()
+        return True
+    except:
+        return False
+
+if not get_lock():
+    print("Another instance of heartbeat.py is already running. Exiting.")
+    exit(0)
 
 if not URL or not KEY:
     print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
@@ -245,11 +246,11 @@ class HeartbeatHandler(FileSystemEventHandler):
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
         try:
-            # COOLDOWN (Burst Mode: 5s)
+            # COOLDOWN (Burst Mode: 15s)
             cooldown_key = f"{project_name}_{workflow['label']}"
             current_time = time.time()
             if cooldown_key in last_sent_cache:
-                if current_time - last_sent_cache[cooldown_key] < 5:
+                if current_time - last_sent_cache[cooldown_key] < 15:
                     return
             
             last_sent_cache[cooldown_key] = current_time
