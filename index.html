@@ -116,7 +116,19 @@
             background-position: center;
         }
 
-        .sprite-default { background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'); }
+        .sprite-focused { background-image: url('stephen_focus.png'); }
+        .sprite-creative { background-image: url('stephen_hacker.png'); }
+        .sprite-artistic { background-image: url('stephen_artist.png'); }
+        .sprite-success { background-image: url('stephen_celebration.png'); }
+        .sprite-lanna_special { background-image: url('stephen_lanna.png'); }
+        .sprite-musician { background-image: url('stephen_synth.png'); }
+        .sprite-burlesque { background-image: url('stephen_burlesque.png'); }
+        .sprite-deer { background-image: url('stephen_deer.png'); }
+        .sprite-podcast { background-image: url('stephen_podcast.png'); }
+        .sprite-rand1 { background-image: url('stephen_rand1.png'); }
+        .sprite-rand2 { background-image: url('stephen_rand2.png'); }
+        .sprite-rand3 { background-image: url('stephen_rand3.png'); }
+        .sprite-rand4 { background-image: url('stephen_rand4.png'); }
         .sprite-lanna { background-image: url('lanna_sprite.png'); }
         .sprite-acam { background-image: url('acam_sprite.png'); }
 
@@ -205,9 +217,31 @@
             return '';
         }
 
-        function getSpriteClass(projectName) {
-            const name = projectName.toUpperCase();
-            if (name.includes('LANNA')) return 'sprite-lanna';
+        function getSpriteClass(data) {
+            const name = data.project_name.toUpperCase();
+            const action = (data.action_label || '').toUpperCase();
+
+            // 1. Specialized Project Sprites
+            if (name.includes('LANNA')) return 'sprite-lanna_special';
+            if (name.includes('SCARLETT')) return 'sprite-burlesque';
+            if (name.includes('DEER')) return 'sprite-deer';
+            if (name.includes('DFP')) return 'sprite-podcast';
+            if (name.includes('RANDOM')) {
+                // Use the timestamp to pick a consistent random sprite for this card
+                const seed = new Date(data.created_at).getTime() || Math.random() * 1000;
+                const randNum = (Math.floor(seed) % 4) + 1;
+                return `sprite-rand${randNum}`;
+            }
+            if (name.includes('BLUE CHROMATIC TRIANGLE') || action.includes('AUDIO') || action.includes('MUSICAL')) {
+                return 'sprite-musician';
+            }
+            
+            // 2. Prioritize General Stephen Sprites by Mood
+            if (data.mood_tag) {
+                return `sprite-${data.mood_tag}`;
+            }
+            
+            // 3. Fallback to Project Sprites
             if (name.includes('A-CAM')) return 'sprite-acam';
             return 'sprite-default';
         }
@@ -219,7 +253,7 @@
             const time = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
             card.innerHTML = `
-                <div class="sprite ${getSpriteClass(data.project_name)}"></div>
+                <div class="sprite ${getSpriteClass(data)}"></div>
                 <div class="details">
                     <span class="action-label">${data.action_label}</span>
                     <span class="project-name">${data.project_name}</span>
