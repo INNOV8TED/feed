@@ -3,12 +3,20 @@ import os
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- CONFIGURATION ---
-URL = "https://dzgyqrnmsnhqaiqthzok.supabase.co"
-KEY = "sb_publishable_TZOHRPfCaaV1AyIVErNknw_IzEsmhtQ"
+URL = os.environ.get("SUPABASE_URL")
+KEY = os.environ.get("SUPABASE_KEY")
 WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
+
+if not URL or not KEY:
+    print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
+    exit(1)
 
 supabase = create_client(URL, KEY)
 
