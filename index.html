@@ -299,46 +299,55 @@
                 height: 100vh;
                 padding: 0;
                 display: flex;
-                align-items: center; /* PERFECT VERTICAL CENTER */
+                align-items: center; 
                 justify-content: center;
                 overflow-x: auto;
                 overflow-y: hidden;
             }
             #stream { 
-                height: 70vh; /* CINEMATIC TALLNESS */
-                padding: 0 10vw;
+                height: 75vh;
+                padding: 0 5vw;
                 display: flex;
                 align-items: center;
-                gap: 40px;
-                justify-content: center; /* ADDED */
+                gap: 30px;
+                justify-content: flex-start !important; /* Allow scroll from left */
             }
             .column { 
-                min-width: 80vw; 
+                min-width: 85vw; 
                 height: 100%;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
             }
             .pulse-card { 
-                height: 100%;
+                height: auto;
+                min-height: 50vh;
                 width: 100%;
                 flex-direction: column; 
                 text-align: left; 
-                justify-content: space-between;
-                padding: 30px;
+                justify-content: center;
+                padding: 35px;
+                background: rgba(10, 10, 10, 0.85);
             }
-            .sprite-wrapper { width: 90px; height: 90px; }
-            .pulse-bg { opacity: 0.35; }
-            #info-toggle { top: 30px; left: 30px; font-size: 0.75em; }
-            #nexus-link { width: 110px; bottom: 30px; left: 30px; }
+            .pulse-label { font-size: 1.8em; margin: 15px 0; }
+            .pulse-sub-label { font-size: 0.9em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
+            .sprite-wrapper { width: 100px; height: 100px; margin-bottom: 10px; }
+            .pulse-bg { opacity: 0.45; }
+            #info-toggle { top: 25px; left: 25px; font-size: 0.8em; }
+            #nexus-link { width: 100px; bottom: 25px; left: 25px; }
             #page-title { 
                 position: fixed; 
-                top: 35px; right: 30px; 
-                font-size: 0.65em; 
-                letter-spacing: 5px; 
+                top: 30px; right: 25px; 
+                font-size: 0.55em; 
+                letter-spacing: 4px; 
             }
         }
-        /* FORCE_DEPLOY_SYNC_V7 */
+        
+        @keyframes breathe {
+            0%, 100% { opacity: 0.6; text-shadow: 0 0 5px var(--accent-color); }
+            50% { opacity: 1; text-shadow: 0 0 15px var(--accent-color); }
+        }
+        /* FORCE_DEPLOY_SYNC_V8 */
     </style>
 </head>
 <body>
@@ -477,19 +486,15 @@
             return col;
         }
 
-        const displayedPulseFingerprints = new Set();
+        const displayedPulseIds = new Set();
 
         function updateUI(data, isInitial = false) {
             if (!data.id) return;
+            if (displayedPulseIds.has(data.id)) return;
+            displayedPulseIds.add(data.id);
+            
             const dateObj = new Date(data.created_at || Date.now());
             const dateStr = dateObj.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
-            
-            // Coarsen Fingerprint
-            const roundedTime = dateObj.toISOString().substring(0, 16); 
-            const fingerprint = `${data.action_label}|${roundedTime}`;
-            
-            if (displayedPulseFingerprints.has(fingerprint)) return;
-            displayedPulseFingerprints.add(fingerprint);
             
             document.body.className = getThemeClass(data.project_name);
             
