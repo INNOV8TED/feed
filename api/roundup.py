@@ -142,19 +142,23 @@ class handler(BaseHTTPRequestHandler):
             canvas.paste(sprite, (WIDTH - sprite.width + 80, HEIGHT - sprite.height + 80), sprite)
         except: pass
 
-        # 6. Branding & Save
+        # 6. Save and Upload Final Card
         draw = ImageDraw.Draw(canvas)
         draw.text((60, 60), f"STUDIO PULSE: {dominant_project}", fill=(0, 255, 180, 255))
         
-        final_card = canvas.convert("RGB")
+        final_card = canvas.convert("RGBA")
         output = BytesIO()
-        final_card.save(output, format="JPEG", quality=92)
+        final_card.save(output, format="PNG")
         output.seek(0)
         
-        card_name = f"roundup_{int(datetime.now().timestamp())}.jpg"
-        # Fix: Upload to root of bucket to avoid folder issues
+        card_name = f"roundup_{int(datetime.now().timestamp())}.png"
+        # Fix: Upload with explicit content-type
         try:
-            supabase.storage.from_("studio-assets").upload(path=card_name, file=output.read())
+            supabase.storage.from_("studio-assets").upload(
+                path=card_name, 
+                file=output.read(),
+                file_options={"content-type": "image/png"}
+            )
             final_url = supabase.storage.from_("studio-assets").get_public_url(card_name)
         except Exception as e:
             self.send_response(500)
