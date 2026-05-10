@@ -446,6 +446,20 @@
         .pulse-label { font-size: 2.5em; margin: 20px 0; color: #fff; font-weight: 800; max-width: 85%; line-height: 1; letter-spacing: -1px; }
         .pulse-sub-label { font-size: 1.1em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
         
+        .pulse-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+            z-index: 1;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            filter: grayscale(1) contrast(1.2);
+            background-size: cover;
+            background-position: center;
+        }
         .sprite-wrapper { 
             position: absolute;
             bottom: 0;
@@ -455,13 +469,6 @@
             margin: 0;
             z-index: 5;
             pointer-events: none;
-        }
-        .pulse-bg { 
-            opacity: 0.1 !important; 
-            filter: grayscale(1) contrast(1.2);
-            background-size: cover;
-            background-position: center;
-            transition: background-image 2s ease-in-out, opacity 1s ease;
         }
         #info-toggle { top: 40px; left: 40px; font-size: 0.9em; font-weight: 700; z-index: 100; }
         #page-title { 
