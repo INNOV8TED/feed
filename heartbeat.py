@@ -97,7 +97,8 @@ LABEL_POOL = {
     "edit":     ["Deep in the Edit", "Cutting the Master", "Timeline Sculpting", "Visual Storytelling", "Assembly Phase", "Edit Lock In Progress", "Color Correction"],
     "motion":   ["Motion Graphics & FX", "Visual Synthesis", "Dynamic Simulation", "After Effects Magic", "Kinetic Design", "FX Pass", "Animating Reality"],
     "graphic":  ["Graphic Design", "Visual Prototyping", "Digital Alchemy", "Aesthetic Refinement", "Composition Phase", "Pixel Perfecting", "Texture Mapping", "Branding Forge"],
-    "audio":    ["Audio Mastering", "Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"]
+    "audio":    ["Audio Mastering", "Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"],
+    "render":   ["Exporting Master", "Finalizing Visuals", "Rendering Sequence", "Baking Pixels", "Outputting Production", "Encoding Final Cut"]
 }
 
 # Mapping file types to categories and moods
@@ -109,7 +110,9 @@ WORKFLOW_MAP = {
     ".wav":    {"category": "audio",   "mood": "musical"},
     ".mp3":    {"category": "audio",   "mood": "musical"},
     ".jpg":    {"category": "graphic", "mood": "artistic"},
-    ".png":    {"category": "graphic", "mood": "artistic"}
+    ".png":    {"category": "graphic", "mood": "artistic"},
+    ".mp4":    {"category": "render",  "mood": "accomplished"},
+    ".mov":    {"category": "render",  "mood": "accomplished"}
 }
 
 def get_project_name(file_path):
@@ -691,13 +694,18 @@ if __name__ == "__main__":
             observer = Observer()
             observer.schedule(event_handler, WATCH_PATH, recursive=True)
             observer.start()
-            print(f"Monitoring {WATCH_PATH} with Buffer integration and Echo Fix (Active)...")
+            log_msg(f"Monitoring {WATCH_PATH} with Buffer integration and Echo Fix (Active)...")
             
             while observer.is_alive():
+                # Self-check pulse in log every hour
+                if int(time.time()) % 3600 == 0:
+                    log_msg("◈ [STATUS] Heartbeat Active and Monitoring.")
                 time.sleep(1)
                 
         except Exception as e:
-            print(f"Watcher error: {e}. Restarting in 10 seconds...")
+            err_msg = traceback.format_exc()
+            log_msg(f"!!! [CRITICAL WATCHER ERROR] {e}\n{err_msg}")
+            log_msg("Restarting observer in 10 seconds...")
             try:
                 observer.stop()
             except:
