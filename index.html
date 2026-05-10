@@ -235,10 +235,23 @@
             box-shadow: 0 0 40px var(--media-glow) !important;
         }
 
-        /* FULL HEIGHT HERO CARDS - REDUCED TO NORMAL HEIGHT */
+        /* FULL HEIGHT HERO CARDS - MATCHES 2 STACKED + GAP */
         .pulse-card.hero-card {
+            height: 860px !important;
+            width: 480px !important;
             border-width: 2px;
-            /* No height override - stays consistent with 400px */
+        }
+
+        /* SAFE ZONE GUTTER FOR RENDERS */
+        .pulse-bg, video {
+            position: absolute;
+            top: 15px; left: 15px;
+            right: 15px; bottom: 15px;
+            width: calc(100% - 30px) !important;
+            height: calc(100% - 30px) !important;
+            object-fit: cover;
+            border-radius: 4px;
+            z-index: 0;
         }
 
         .render-progress-container {
@@ -444,7 +457,7 @@
             flex-direction: column; 
             text-align: left; 
             justify-content: center;
-            padding: 40px;
+            padding: 50px; /* INCREASED PADDING FOR SAFE ZONE */
             background: rgba(10, 10, 10, 0.95);
             backdrop-filter: blur(30px);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -453,8 +466,11 @@
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
         }
+        .hero-card { height: 860px; width: 480px; }
         .pulse-label { font-size: 2.5em; margin: 20px 0; color: #fff; font-weight: 800; max-width: 85%; line-height: 1; letter-spacing: -1px; }
         .pulse-sub-label { font-size: 1.1em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
+        
+        /* CLEANED UP DUPLICATES */
         
         .sprite-wrapper { 
             position: absolute;
@@ -465,13 +481,6 @@
             margin: 0;
             z-index: 5;
             pointer-events: none;
-        }
-        .pulse-bg { 
-            opacity: 0.1 !important; 
-            filter: grayscale(1) contrast(1.2);
-            background-size: cover;
-            background-position: center;
-            transition: background-image 2s ease-in-out, opacity 1s ease;
         }
         #info-toggle { top: 40px; left: 40px; font-size: 0.9em; font-weight: 700; z-index: 100; }
         #page-title { 
