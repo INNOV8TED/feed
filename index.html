@@ -851,11 +851,11 @@
                 .from('studio_heartbeat')
                 .select('*')
                 .gt('created_at', sessionStart)
-                .order('created_at', { ascending: false })
-                .limit(50);
+                .order('created_at', { ascending: true }) // LOAD OLDEST TO NEWEST
+                .limit(100);
             
             if (data) {
-                data.reverse().forEach(p => updateUI(p, true));
+                data.forEach(p => updateUI(p, true));
             }
         }
 
