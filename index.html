@@ -223,10 +223,22 @@
             z-index: 10;
         }
 
+        /* MEDIA THEMES */
+        .card-video { --media-accent: #C5A059; --media-glow: rgba(197, 160, 89, 0.2); }
+        .card-audio { --media-accent: #00A8FF; --media-glow: rgba(0, 168, 255, 0.2); }
+        .card-image { --media-accent: #ff00ff; --media-glow: rgba(255, 0, 255, 0.2); }
+        .card-dev   { --media-accent: #00ff00; --media-glow: rgba(0, 255, 0, 0.2); }
+
         /* RENDER GLOW STYLES */
         .render-glow {
-            border-color: #FFD700 !important;
-            box-shadow: 0 0 40px rgba(255, 215, 0, 0.25) !important;
+            border-color: var(--media-accent) !important;
+            box-shadow: 0 0 40px var(--media-glow) !important;
+        }
+
+        /* FULL HEIGHT HERO CARDS */
+        .pulse-card.hero-card {
+            height: 100% !important;
+            border-width: 2px;
         }
 
         .render-progress-container {
@@ -414,19 +426,19 @@
             padding: 0 5vw;
             display: flex;
             align-items: center;
-            gap: 40px;
+            gap: 60px; /* RESTORED SPACING */
         }
         .column { 
-            min-width: 480px; 
+            min-width: 520px; 
             height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 40px;
+            gap: 60px; /* RESTORED SPACING */
         }
         .pulse-card { 
             flex: 0 0 auto;
-            height: 420px; /* FIXED CONSISTENT HEIGHT */
+            height: 400px; 
             width: 520px;
             display: flex;
             flex-direction: column; 
@@ -643,7 +655,8 @@
             else mediaClass = '';
 
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''}`;
+            const isHero = data.is_milestone && (software.includes('PREMIERE') || isVideo);
+            card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
             card.innerHTML = `
                 <div class="render-progress-container">
                     <div class="render-progress-bar"></div>
@@ -792,8 +805,9 @@
             // 2. Manage Masonry Columns
             const isMobile = window.innerWidth <= 600;
             const maxPulsePerColumn = isMobile ? 1 : 2;
+            const isHero = data.is_milestone && (imageUrl.toLowerCase().endsWith('.mp4'));
 
-            if (!currentColumn || pulseInColumn >= maxPulsePerColumn) {
+            if (!currentColumn || pulseInColumn >= maxPulsePerColumn || isHero) {
                 currentColumn = document.createElement('div');
                 currentColumn.className = 'column latest-pulse';
                 streamContainer.prepend(currentColumn);
@@ -803,7 +817,12 @@
             const newCard = createPulseCard(data, isInitial);
             newCard.setAttribute('data-pulse-id', data.id); // TRACK ID
             currentColumn.prepend(newCard);
-            pulseInColumn++;
+            
+            if (isHero) {
+                pulseInColumn = 100; // Force next card to new column
+            } else {
+                pulseInColumn++;
+            }
 
             if (!isInitial) playHeartbeat();
         }
