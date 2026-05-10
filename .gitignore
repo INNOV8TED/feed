@@ -12,3 +12,5 @@ env/
 *.lock
 storage_list.txt
 check_ids.py
+
+.vercel
