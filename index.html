@@ -411,10 +411,10 @@
         }
         #stream { 
             height: 100%;
-            padding: 100px 5vw; /* RELAXED TOP/BOTTOM SAFETY ZONE */
+            padding: 160px 5vw; /* EXPANDED HUD SAFETY ZONE */
             display: flex;
             align-items: center;
-            gap: 80px; /* RELAXED GALLERY SPACING */
+            gap: 80px; 
             box-sizing: border-box;
         }
         .column { 
@@ -644,7 +644,7 @@
             else if (software.includes('VS CODE') || software.includes('PYTHON')) mediaClass += 'card-dev';
             else mediaClass = '';
 
-            const isHero = data.is_milestone || isVideo || imageUrl.toLowerCase().endsWith('.mov');
+            const isHero = isVideo; 
             const card = document.createElement('div');
             card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
             card.innerHTML = `
@@ -654,7 +654,7 @@
                 <div class="heartbeat-light"></div>
                 ${data.is_milestone ? '<div class="milestone-badge" style="background: #FFD700; color: #000;">Master Render</div>' : ''}
                 
-                <div class="pulse-bg" style="background-image: url('${!isVideo ? imageUrl : ''}'); opacity: ${imageUrl ? 0.35 : 0}">
+                <div class="pulse-bg" style="background-image: url('${imageUrl && !isVideo ? imageUrl : ''}'); opacity: ${imageUrl ? 0.5 : 0}">
                     ${isVideo ? `
                         <video autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: cover; opacity: 0.6;">
                             <source src="${imageUrl}" type="video/mp4">
@@ -798,7 +798,7 @@
             
             const parts = (data.mood_tag || '').split('|');
             const imageUrl = parts[2] || '';
-            const isHero = data.is_milestone || imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov');
+            const isHero = imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov');
 
             if (!currentColumn || pulseInColumn >= maxPulsePerColumn || isHero) {
                 currentColumn = document.createElement('div');
