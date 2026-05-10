@@ -742,7 +742,29 @@
                         <span class="timestamp">${timeStr}</span>
                     </div>
                     <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;">
-                        <div class="pulse-label">${data.action_label}</div>
+                        <div class="pulse-label">${(() => {
+                            let label = data.action_label || 'Studio Activity';
+                            const id = data.id || 0;
+                            const pools = {
+                                edit:     ["Cutting the Master", "Timeline Sculpting", "Visual Storytelling", "Assembly Phase", "Edit Lock In Progress", "Color Correction", "Master Render Phase", "Sequence Assembly"],
+                                motion:   ["Visual Synthesis", "Dynamic Simulation", "After Effects Magic", "Kinetic Design", "FX Pass", "Animating Reality"],
+                                graphic:  ["Visual Prototyping", "Digital Alchemy", "Aesthetic Refinement", "Composition Phase", "Pixel Perfecting", "Texture Mapping", "Branding Forge"],
+                                audio:    ["Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"]
+                            };
+                            const mapping = {
+                                "Deep in the Edit": "edit",
+                                "Exporting Final Render": "edit",
+                                "Color Grading HERO shot": "edit",
+                                "Motion Graphics & FX": "motion",
+                                "Graphic Design": "graphic",
+                                "Audio Mastering": "audio"
+                            };
+                            if (mapping[label]) {
+                                const pool = pools[mapping[label]];
+                                return pool[id % pool.length];
+                            }
+                            return label;
+                        })()}</div>
                         ${imageUrl && imageUrl.toLowerCase().endsWith('.mp4') ? `
                             <div class="audio-toggle" onclick="toggleAudio('vid-${data.id}', this)" style="cursor: pointer; color: var(--accent-color); display: flex; align-items: center; justify-content: center; transition: all 0.3s; opacity: 0.7; text-shadow: 0 0 10px var(--accent-color); margin-top: 25px; flex-shrink: 0;">
                                 <span class="material-icons" style="font-size: 28px;">volume_off</span>
