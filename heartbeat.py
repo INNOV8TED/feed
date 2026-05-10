@@ -138,7 +138,10 @@ def get_project_name(file_path):
         return "Studio Project"
 
 def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_type="REEL"):
-    """Broadcasts a message to a specific Buffer profile using GraphQL."""
+    if not profile_id:
+        log_msg("Buffer Profile ID missing. Skipping broadcast.")
+        return
+
     # --- CURATED SCHEDULE: 1 REEL AND 1 GRID POST PER CHANNEL PER DAY ---
     try:
         today = datetime.now().strftime('%Y-%m-%d')
@@ -163,8 +166,8 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
     except Exception as e:
         log_msg(f"[QUOTA ERROR] {e}")
 
-    if not BUFFER_TOKEN or not profile_id or "your_buffer" in BUFFER_TOKEN:
-        log_msg("Buffer credentials or Profile ID missing. Skipping broadcast.")
+    if not BUFFER_TOKEN or "your_buffer" in BUFFER_TOKEN:
+        log_msg("Buffer token missing. Skipping broadcast.")
         return
 
     url = "https://api.buffer.com"
@@ -287,84 +290,84 @@ class HeartbeatHandler(FileSystemEventHandler):
     def process_event(self, event):
         try:
             file_path = event.src_path
-        ext = os.path.splitext(file_path)[1].lower().strip()
-            
-        # DEEP DEBUG
-        log_msg(f"[DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
+            ext = os.path.splitext(file_path)[1].lower().strip()
+                
+            # DEEP DEBUG
+            log_msg(f"[DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
 
-        # FLEXIBLE MATCHING (Including Premiere Temp patterns)
-        workflow = None
-        for key in WORKFLOW_MAP:
-            if ext.startswith(key):
-                # Create a specific workflow instance with a random label
-                base_workflow = WORKFLOW_MAP[key]
-                category = base_workflow.get("category", "graphic")
-                workflow = {
-                    "label": random.choice(LABEL_POOL.get(category, ["Studio Activity"])),
-                    "mood": base_workflow["mood"],
-                    "category": category
-                }
-                break
-        
-        # Premiere specific temp handling (Handles files with no extension during save)
-        if not workflow and len(ext) == 0:
-            try:
-                parent_dir = os.path.dirname(file_path)
-                if any(f.lower().endswith(".prproj") for f in os.listdir(parent_dir)):
-                    base_workflow = WORKFLOW_MAP.get(".prproj")
-                    category = base_workflow.get("category", "save")
+            # FLEXIBLE MATCHING (Including Premiere Temp patterns)
+            workflow = None
+            for key in WORKFLOW_MAP:
+                if ext.startswith(key):
+                    # Create a specific workflow instance with a random label
+                    base_workflow = WORKFLOW_MAP[key]
+                    category = base_workflow.get("category", "graphic")
                     workflow = {
-                        "label": random.choice(LABEL_POOL.get(category, ["Studio Snapshot"])),
+                        "label": random.choice(LABEL_POOL.get(category, ["Studio Activity"])),
                         "mood": base_workflow["mood"],
                         "category": category
                     }
-            except: pass
-
-        if workflow:
-            project_name = get_project_name(file_path)
+                    break
             
-            # --- INTENTION CHECK (Freshness) ---
-            # If the modification time is not "Now" (within 5 seconds), 
-            # it's likely a move/copy/import, not an active render/save.
-            try:
-                mtime = os.path.getmtime(file_path)
-                if (time.time() - mtime) > 30.0:
-                    return
-            except: pass
+            # Premiere specific temp handling (Handles files with no extension during save)
+            if not workflow and len(ext) == 0:
+                try:
+                    parent_dir = os.path.dirname(file_path)
+                    if any(f.lower().endswith(".prproj") for f in os.listdir(parent_dir)):
+                        base_workflow = WORKFLOW_MAP.get(".prproj")
+                        category = base_workflow.get("category", "save")
+                        workflow = {
+                            "label": random.choice(LABEL_POOL.get(category, ["Studio Snapshot"])),
+                            "mood": base_workflow["mood"],
+                            "category": category
+                        }
+                except: pass
 
-            # --- OPEN VS SAVE FILTER ---
-            try:
-                current_size = os.path.getsize(file_path)
-                last_size = last_size_cache.get(file_path)
+            if workflow:
+                project_name = get_project_name(file_path)
                 
-                # If it's a project file (not a render) and size hasn't changed, ignore it.
-                # This prevents "Open" events from triggering pulses.
-                if ext != ".mp4" and last_size is not None and current_size == last_size:
-                    # log_msg(f"[WATCHER] Size unchanged for {os.path.basename(file_path)}. Skipping pulse.")
-                    return
-                
-                last_size_cache[file_path] = current_size
-            except Exception as e:
-                # If we can't get the size (e.g. file locked/temp), proceed anyway
-                pass
+                # --- INTENTION CHECK (Freshness) ---
+                # If the modification time is not "Now" (within 5 seconds), 
+                # it's likely a move/copy/import, not an active render/save.
+                try:
+                    mtime = os.path.getmtime(file_path)
+                    if (time.time() - mtime) > 30.0:
+                        return
+                except: pass
 
-            log_msg(f"[WATCHER] Mapping: {project_name} | {workflow['label']}")
-            
-            # --- DEBOUNCE LOGIC ---
-            # Group events by project and label
-            debounce_key = f"{project_name}_{workflow['label']}"
-            
-            if debounce_key in pending_timers:
-                pending_timers[debounce_key].cancel()
+                # --- OPEN VS SAVE FILTER ---
+                try:
+                    current_size = os.path.getsize(file_path)
+                    last_size = last_size_cache.get(file_path)
+                    
+                    # If it's a project file (not a render) and size hasn't changed, ignore it.
+                    # This prevents "Open" events from triggering pulses.
+                    if ext != ".mp4" and last_size is not None and current_size == last_size:
+                        # log_msg(f"[WATCHER] Size unchanged for {os.path.basename(file_path)}. Skipping pulse.")
+                        return
+                    
+                    last_size_cache[file_path] = current_size
+                except Exception as e:
+                    # If we can't get the size (e.g. file locked/temp), proceed anyway
+                    pass
+
+                log_msg(f"[WATCHER] Mapping: {project_name} | {workflow['label']}")
                 
-            # Schedule the actual broadcast
-            timer = threading.Timer(
-                DEBOUNCE_SECONDS, 
-                self.dispatch_heartbeat, 
-                args=[project_name, workflow, file_path]
-            )
-            pending_timers[debounce_key] = timer
-            timer.start()
+                # --- DEBOUNCE LOGIC ---
+                # Group events by project and label
+                debounce_key = f"{project_name}_{workflow['label']}"
+                
+                if debounce_key in pending_timers:
+                    pending_timers[debounce_key].cancel()
+                    
+                # Schedule the actual broadcast
+                timer = threading.Timer(
+                    DEBOUNCE_SECONDS, 
+                    self.dispatch_heartbeat, 
+                    args=[project_name, workflow, file_path]
+                )
+                pending_timers[debounce_key] = timer
+                timer.start()
 
         except Exception as e:
             log_msg(f"[PROCESS ERROR] {e}")
