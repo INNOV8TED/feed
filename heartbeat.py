@@ -63,7 +63,7 @@ load_cache()
 
 # ECHO-ZERO LOCK
 last_broadcast_time = 0
-BROADCAST_LOCK_PERIOD = 10  # Seconds
+BROADCAST_LOCK_PERIOD = 20  # Increased for stability
 pending_timers = {}
 
 # --- SINGLETON LOCK ---
@@ -341,23 +341,40 @@ class HeartbeatHandler(FileSystemEventHandler):
         """The actual logic that sends data to Supabase, after debouncing."""
         global last_broadcast_time
         try:
-            # 0. GLOBAL COOLDOWN (Echo-Zero Lock)
             current_time = time.time()
+            ext = os.path.splitext(file_path)[1].lower().strip()
+            
+            # Identify Quality
+            is_video = (ext == ".mp4" or ext == ".mov")
+            is_audio = (ext in [".wav", ".mp3"])
+            is_image = (ext in [".jpg", ".jpeg", ".png"])
+            is_high_quality = is_video or is_audio or is_image
+
+            # 0. GLOBAL COOLDOWN (Echo-Zero Lock)
             if current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD:
-                # log_msg(f"[LOCK] Suppressing duplicate burst for {project_name}.")
                 return
             
-            # 1. PROJECT COOLDOWN (Burst Mode: 15s)
+            # 1. PROJECT COOLDOWN & QUALITY FILTER
             cooldown_key = f"{project_name}_{workflow['label']}"
             if cooldown_key in last_sent_cache:
-                if current_time - last_sent_cache[cooldown_key] < 15:
+                last_pulse = last_sent_cache[cooldown_key]
+                # Handle legacy cache format
+                if not isinstance(last_pulse, dict):
+                    last_pulse = {"time": last_pulse, "is_high_quality": False}
+                
+                # If we just sent a high-quality pulse, ignore low-quality ones for 2 minutes
+                if last_pulse["is_high_quality"] and not is_high_quality:
+                    if current_time - last_pulse["time"] < 120:
+                        return
+                
+                # Standard burst protection
+                if current_time - last_pulse["time"] < 15:
                     return
             
-            last_sent_cache[cooldown_key] = current_time
+            last_sent_cache[cooldown_key] = {"time": current_time, "is_high_quality": is_high_quality}
             last_broadcast_time = current_time
             
             # 1. PREPARE METADATA
-            ext = os.path.splitext(file_path)[1].lower().strip()
             mood = workflow['mood']
             quote = get_random_quote()
 
@@ -385,10 +402,6 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             # 2. CAPTURE VISION / VIDEO / AUDIO / IMAGE (Synchronous)
             asset_url = ""
-            is_video = (ext == ".mp4" or ext == ".mov")
-            is_audio = (ext in [".wav", ".mp3"])
-            is_image = (ext in [".jpg", ".jpeg", ".png"])
-            
             asset_file = None
             if is_video:
                 log_msg(f">>> [VIDEO] Extracting highlight from {os.path.basename(file_path)}...")
