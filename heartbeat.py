@@ -413,10 +413,12 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             # 4. ROUTE TO BUFFER
             buffer_profile = BUFFER_PROFILE_ID_MAIN
+            path_upper = file_path.upper()
             proj_upper = project_name.upper()
-            if "LANNA" in proj_upper:
+            
+            if "LANNA" in path_upper or "LANNA" in proj_upper:
                 buffer_profile = BUFFER_PROFILE_ID_LANNA
-            elif any(x in proj_upper for x in ["BLUE", "MUSIC", "CHROMATIC", "TRIANGLE"]):
+            elif any(x in path_upper for x in ["BLUE CHROMATIC", "TRIANGLE", "DEER"]) or any(x in proj_upper for x in ["BLUE", "TRIANGLE", "DEER"]):
                 buffer_profile = BUFFER_PROFILE_ID_BLUE
 
             if is_video or is_audio:
@@ -607,7 +609,7 @@ def schedule_cleanup():
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
     log_msg("Initializing Studio Pulse Vision Pipeline...")
-    last_size_cache = load_cache()
+    load_cache()
     for root, dirs, files in os.walk(WATCH_PATH):
         if any(ignore in root for ignore in IGNORE_FOLDERS): continue
         for f in files:
