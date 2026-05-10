@@ -247,6 +247,16 @@ class HeartbeatHandler(FileSystemEventHandler):
         if workflow:
             project_name = get_project_name(file_path)
             
+            # --- INTENTION CHECK (Freshness) ---
+            # If the modification time is not "Now" (within 5 seconds), 
+            # it's likely a move/copy/import, not an active render/save.
+            try:
+                mtime = os.path.getmtime(file_path)
+                if (time.time() - mtime) > 5.0:
+                    # log_msg(f"[WATCHER] Passive file detected (old timestamp). Ignoring {os.path.basename(file_path)}.")
+                    return
+            except: pass
+
             # --- OPEN VS SAVE FILTER ---
             try:
                 current_size = os.path.getsize(file_path)
