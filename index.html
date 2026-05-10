@@ -235,9 +235,9 @@
             box-shadow: 0 0 40px var(--media-glow) !important;
         }
 
-        /* THE GOLDEN HERO HEIGHT - 2 STACKED + GAP */
+        /* THE APPROVED HERO HEIGHT - 800px FOR BREATHING ROOM */
         .pulse-card.hero-card {
-            height: 860px !important;
+            height: 800px !important;
             width: 480px !important;
             border-width: 2px;
         }
@@ -439,7 +439,7 @@
         }
         #stream { 
             height: 100%;
-            padding: 150px 5vw; /* THE GOLDEN SAFETY ZONE */
+            padding: 120px 5vw; /* THE APPROVED SAFETY ZONE */
             display: flex;
             align-items: center;
             gap: 60px; 
@@ -470,7 +470,7 @@
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .pulse-card.hero-card { height: 860px !important; width: 480px !important; }
+        .pulse-card.hero-card { height: 800px !important; width: 480px !important; }
         .pulse-label { font-size: 2.5em; margin: 20px 0; color: #fff; font-weight: 800; max-width: 85%; line-height: 1; letter-spacing: -1px; }
         .pulse-sub-label { font-size: 1.1em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
         
@@ -846,11 +846,11 @@
                 .from('studio_heartbeat')
                 .select('*')
                 .gt('created_at', sessionStart)
-                .order('created_at', { ascending: true }) // LOAD OLDEST TO NEWEST
+                .order('created_at', { ascending: false }) // NEWEST FIRST
                 .limit(100);
             
             if (data) {
-                data.forEach(p => updateUI(p, true));
+                data.reverse().forEach(p => updateUI(p, true)); // RENDER OLDEST TO NEWEST (PREPENDING)
             }
         }
 
