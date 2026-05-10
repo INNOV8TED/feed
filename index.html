@@ -411,10 +411,11 @@
         }
         #stream { 
             height: 100%;
-            padding: 0 5vw;
+            padding: 100px 5vw; /* RELAXED TOP/BOTTOM SAFETY ZONE */
             display: flex;
             align-items: center;
-            gap: 40px;
+            gap: 80px; /* RELAXED GALLERY SPACING */
+            box-sizing: border-box;
         }
         .column { 
             min-width: 480px; 
@@ -422,11 +423,11 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 40px;
+            gap: 80px; /* RELAXED GALLERY SPACING */
         }
         .pulse-card { 
             flex: 0 0 auto;
-            height: 420px; /* FIXED CONSISTENT HEIGHT */
+            height: 420px; 
             width: 520px;
             display: flex;
             flex-direction: column; 
@@ -441,6 +442,7 @@
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
         }
+        .hero-card { height: 920px !important; width: 480px !important; }
         .pulse-label { font-size: 2.5em; margin: 20px 0; color: #fff; font-weight: 800; max-width: 85%; line-height: 1; letter-spacing: -1px; }
         .pulse-sub-label { font-size: 1.1em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
         
@@ -642,8 +644,9 @@
             else if (software.includes('VS CODE') || software.includes('PYTHON')) mediaClass += 'card-dev';
             else mediaClass = '';
 
+            const isHero = data.is_milestone || isVideo || imageUrl.toLowerCase().endsWith('.mov');
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''}`;
+            card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
             card.innerHTML = `
                 <div class="render-progress-container">
                     <div class="render-progress-bar"></div>
@@ -792,8 +795,12 @@
             // 2. Manage Masonry Columns
             const isMobile = window.innerWidth <= 600;
             const maxPulsePerColumn = isMobile ? 1 : 2;
+            
+            const parts = (data.mood_tag || '').split('|');
+            const imageUrl = parts[2] || '';
+            const isHero = data.is_milestone || imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov');
 
-            if (!currentColumn || pulseInColumn >= maxPulsePerColumn) {
+            if (!currentColumn || pulseInColumn >= maxPulsePerColumn || isHero) {
                 currentColumn = document.createElement('div');
                 currentColumn.className = 'column latest-pulse';
                 streamContainer.prepend(currentColumn);
@@ -801,9 +808,11 @@
             }
             
             const newCard = createPulseCard(data, isInitial);
-            newCard.setAttribute('data-pulse-id', data.id); // TRACK ID
+            newCard.setAttribute('data-pulse-id', data.id);
             currentColumn.prepend(newCard);
-            pulseInColumn++;
+            
+            if (isHero) pulseInColumn = 100;
+            else pulseInColumn++;
 
             if (!isInitial) playHeartbeat();
         }
