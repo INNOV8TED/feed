@@ -479,6 +479,29 @@
         const streamContainer = document.getElementById('stream');
         const mainContainer = document.getElementById('main-container');
 
+        // PROCEDURAL HEARTBEAT SYNTH
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playHeartbeat() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            // Deep thud sweep
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1);
+            
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
         // MOUSEWHEEL HORIZONTAL SCROLL
         mainContainer.addEventListener('wheel', (evt) => {
             evt.preventDefault();
@@ -679,6 +702,8 @@
             newCard.setAttribute('data-pulse-id', data.id); // TRACK ID
             currentColumn.prepend(newCard);
             pulseInColumn++;
+
+            if (!isInitial) playHeartbeat();
         }
 
         async function loadInitial() {
