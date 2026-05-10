@@ -26,7 +26,7 @@ BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE") # Reserved for
 
 # DYNAMIC WATCH PATH: Monitor the parent of the current script location
 WATCH_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
+IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
     ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_"
@@ -98,12 +98,13 @@ LABEL_POOL = {
     "motion":   ["Motion Graphics & FX", "Visual Synthesis", "Dynamic Simulation", "After Effects Magic", "Kinetic Design", "FX Pass", "Animating Reality"],
     "graphic":  ["Graphic Design", "Visual Prototyping", "Digital Alchemy", "Aesthetic Refinement", "Composition Phase", "Pixel Perfecting", "Texture Mapping", "Branding Forge"],
     "audio":    ["Audio Mastering", "Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"],
-    "render":   ["Exporting Master", "Finalizing Visuals", "Rendering Sequence", "Baking Pixels", "Outputting Production", "Encoding Final Cut"]
+    "render":   ["Exporting Master", "Finalizing Visuals", "Rendering Sequence", "Baking Pixels", "Outputting Production", "Encoding Final Cut"],
+    "save":     ["Project Save", "Studio Snapshot", "Progress Archiving", "State Captured", "Timeline Sync"]
 }
 
 # Mapping file types to categories and moods
 WORKFLOW_MAP = {
-    ".prproj": {"category": "edit",    "mood": "focused"},
+    ".prproj": {"category": "save",    "mood": "focused"},
     ".aep":    {"category": "motion",  "mood": "creative"},
     ".psd":    {"category": "graphic", "mood": "artistic"},
     ".flp":    {"category": "audio",   "mood": "musical"}, 
@@ -284,7 +285,8 @@ class HeartbeatHandler(FileSystemEventHandler):
         self.process_event(event)
 
     def process_event(self, event):
-        file_path = event.src_path
+        try:
+            file_path = event.src_path
         ext = os.path.splitext(file_path)[1].lower().strip()
             
         # DEEP DEBUG
@@ -309,7 +311,13 @@ class HeartbeatHandler(FileSystemEventHandler):
             try:
                 parent_dir = os.path.dirname(file_path)
                 if any(f.lower().endswith(".prproj") for f in os.listdir(parent_dir)):
-                    workflow = WORKFLOW_MAP.get(".prproj")
+                    base_workflow = WORKFLOW_MAP.get(".prproj")
+                    category = base_workflow.get("category", "save")
+                    workflow = {
+                        "label": random.choice(LABEL_POOL.get(category, ["Studio Snapshot"])),
+                        "mood": base_workflow["mood"],
+                        "category": category
+                    }
             except: pass
 
         if workflow:
@@ -358,6 +366,9 @@ class HeartbeatHandler(FileSystemEventHandler):
             pending_timers[debounce_key] = timer
             timer.start()
 
+        except Exception as e:
+            log_msg(f"[PROCESS ERROR] {e}")
+
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
         global last_broadcast_time
@@ -377,19 +388,16 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             # 1. PROJECT COOLDOWN & QUALITY FILTER
             cooldown_key = f"{project_name}_{workflow['label']}"
+            
             if cooldown_key in last_sent_cache:
                 last_pulse = last_sent_cache[cooldown_key]
-                # Handle legacy cache format
-                if not isinstance(last_pulse, dict):
-                    last_pulse = {"time": last_pulse, "is_high_quality": False}
                 
-                # If we just sent a high-quality pulse, ignore low-quality ones for 2 minutes
-                if last_pulse["is_high_quality"] and not is_high_quality:
-                    if current_time - last_pulse["time"] < 120:
-                        return
+                # High-quality pulses (videos) have a much longer cooldown for the same file
+                if is_video and current_time - last_pulse["time"] < 600: # 10 minute cooldown
+                    return
                 
-                # Standard burst protection
-                if current_time - last_pulse["time"] < 15:
+                # Standard burst protection for everything else
+                if not is_video and current_time - last_pulse["time"] < 15:
                     return
             
             last_sent_cache[cooldown_key] = {"time": current_time, "is_high_quality": is_high_quality}
