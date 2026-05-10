@@ -439,10 +439,11 @@
         }
         #stream { 
             height: 100%;
-            padding: 0 5vw;
+            padding: 120px 5vw; /* GUARANTEED TOP/BOTTOM CLEARANCE */
             display: flex;
             align-items: center;
-            gap: 60px; /* RESTORED SPACING */
+            gap: 60px; 
+            box-sizing: border-box;
         }
         .column { 
             min-width: 520px; 
@@ -650,26 +651,20 @@
 
         function createPulseCard(data, isInitial = false) {
             const parts = (data.mood_tag || '').split('|');
-            const mood = parts[0] || 'focused';
-            const subLabel = parts[1] || 'Neural link stable.';
             const imageUrl = parts[2] || '';
-            const software = (parts[3] || 'Creative Engine').toUpperCase();
-            const quote = parts[4] || '';
-
-            const timeStr = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const isVideo = imageUrl.toLowerCase().endsWith('.mp4');
+            const software = (parts[3] || 'Creative Engine').toUpperCase();
             
-            // Determine Media Theme
-            let mediaClass = 'media-themed ';
-            if (software.includes('PREMIERE') || software.includes('MEDIA ENCODER') || isVideo) mediaClass += 'card-video';
-            else if (software.includes('ABLETON') || software.includes('AUDITION') || imageUrl.toLowerCase().endsWith('.wav')) mediaClass += 'card-audio';
-            else if (software.includes('PHOTOSHOP') || software.includes('ILLUSTRATOR')) mediaClass += 'card-image';
-            else if (software.includes('VS CODE') || software.includes('PYTHON')) mediaClass += 'card-dev';
-            else mediaClass = '';
+            // Unified Hero Logic
+            const isHero = data.is_milestone && (isVideo || software.includes('PREMIERE') || software.includes('ABLETON'));
 
             const card = document.createElement('div');
-            const isHero = data.is_milestone && (software.includes('PREMIERE') || software.includes('ABLETON') || isVideo || imageUrl.toLowerCase().endsWith('.wav'));
-            card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
+            card.className = `pulse-card media-themed ${isHero ? 'hero-card' : ''}`;
+            
+            if (software.includes('PREMIERE') || isVideo) card.classList.add('card-video');
+            else if (software.includes('ABLETON') || software.includes('AUDITION')) card.classList.add('card-audio');
+            else if (software.includes('PHOTOSHOP') || software.includes('ILLUSTRATOR')) card.classList.add('card-image');
+            else if (software.includes('VS CODE') || software.includes('PYTHON')) card.classList.add('card-dev');
             card.innerHTML = `
                 <div class="render-progress-container">
                     <div class="render-progress-bar"></div>
@@ -822,8 +817,7 @@
             const parts = (data.mood_tag || '').split('|');
             const software = (parts[3] || '').toUpperCase();
             const imageUrl = parts[2] || '';
-            const isVideo = imageUrl.toLowerCase().endsWith('.mp4');
-            const isHero = data.is_milestone && (software.includes('PREMIERE') || software.includes('ABLETON') || isVideo || imageUrl.toLowerCase().endsWith('.wav'));
+            const isHero = data.is_milestone && (imageUrl.toLowerCase().endsWith('.mp4') || software.includes('PREMIERE') || software.includes('ABLETON'));
 
             if (!currentColumn || pulseInColumn >= maxPulsePerColumn || isHero) {
                 currentColumn = document.createElement('div');
@@ -833,14 +827,11 @@
             }
             
             const newCard = createPulseCard(data, isInitial);
-            newCard.setAttribute('data-pulse-id', data.id); // TRACK ID
+            newCard.setAttribute('data-pulse-id', data.id);
             currentColumn.prepend(newCard);
             
-            if (isHero) {
-                pulseInColumn = 100; // Force next card to new column
-            } else {
-                pulseInColumn++;
-            }
+            if (isHero) pulseInColumn = 100; // Force break
+            else pulseInColumn++;
 
             if (!isInitial) playHeartbeat();
         }
