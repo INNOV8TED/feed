@@ -235,9 +235,9 @@
             box-shadow: 0 0 40px var(--media-glow) !important;
         }
 
-        /* REDUCED HERO HEIGHT FOR CORNER BREATHING ROOM */
+        /* THE GOLDEN HERO HEIGHT - 2 STACKED + GAP */
         .pulse-card.hero-card {
-            height: 800px !important;
+            height: 860px !important;
             width: 480px !important;
             border-width: 2px;
         }
@@ -439,7 +439,7 @@
         }
         #stream { 
             height: 100%;
-            padding: 120px 5vw; /* GUARANTEED TOP/BOTTOM CLEARANCE */
+            padding: 150px 5vw; /* THE GOLDEN SAFETY ZONE */
             display: flex;
             align-items: center;
             gap: 60px; 
@@ -470,7 +470,7 @@
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .pulse-card.hero-card { height: 800px !important; width: 480px !important; }
+        .pulse-card.hero-card { height: 860px !important; width: 480px !important; }
         .pulse-label { font-size: 2.5em; margin: 20px 0; color: #fff; font-weight: 800; max-width: 85%; line-height: 1; letter-spacing: -1px; }
         .pulse-sub-label { font-size: 1.1em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
         
@@ -652,11 +652,12 @@
         function createPulseCard(data, isInitial = false) {
             const parts = (data.mood_tag || '').split('|');
             const imageUrl = parts[2] || '';
-            const isVideo = imageUrl.toLowerCase().endsWith('.mp4');
             const software = (parts[3] || 'Creative Engine').toUpperCase();
             
-            // Unified Hero Logic
-            const isHero = data.is_milestone && (isVideo || software.includes('PREMIERE') || software.includes('ABLETON'));
+            // RELIABLE HERO DETECTION
+            const isVideo = imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov');
+            const isAudio = imageUrl.toLowerCase().endsWith('.wav') || imageUrl.toLowerCase().endsWith('.mp3');
+            const isHero = data.is_milestone || isVideo || isAudio;
 
             const timeStr = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const subLabel = parts[1] || 'Neural link stable.';
@@ -821,7 +822,10 @@
             const parts = (data.mood_tag || '').split('|');
             const software = (parts[3] || '').toUpperCase();
             const imageUrl = parts[2] || '';
-            const isHero = data.is_milestone && (imageUrl.toLowerCase().endsWith('.mp4') || software.includes('PREMIERE') || software.includes('ABLETON'));
+            
+            const isVideo = imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov');
+            const isAudio = imageUrl.toLowerCase().endsWith('.wav') || imageUrl.toLowerCase().endsWith('.mp3');
+            const isHero = data.is_milestone || isVideo || isAudio;
 
             if (!currentColumn || pulseInColumn >= maxPulsePerColumn || isHero) {
                 currentColumn = document.createElement('div');
