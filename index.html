@@ -235,10 +235,10 @@
             box-shadow: 0 0 40px var(--media-glow) !important;
         }
 
-        /* FULL HEIGHT HERO CARDS */
+        /* FULL HEIGHT HERO CARDS - REDUCED TO NORMAL HEIGHT */
         .pulse-card.hero-card {
-            height: 100% !important;
             border-width: 2px;
+            /* No height override - stays consistent with 400px */
         }
 
         .render-progress-container {
@@ -500,10 +500,10 @@
 
         /* MOBILE OVERRIDES */
         @media (max-width: 600px) {
-            #stream { gap: 20px; }
-            .column { min-width: 92vw; height: auto; justify-content: flex-start; padding-top: 100px; }
-            .pulse-card { width: 100%; height: auto; min-height: 350px; padding: 35px; }
-            .sprite-wrapper { width: 130px; height: 130px; }
+            #stream { gap: 40px; padding: 0 10vw; }
+            .column { min-width: 80vw; height: auto; justify-content: flex-start; padding-top: 120px; gap: 40px; }
+            .pulse-card { width: 100%; height: auto; min-height: 400px; padding: 40px; }
+            .sprite-wrapper { width: 120px; height: 120px; }
             .pulse-label { font-size: 2em; }
             #info-toggle { top: 25px; left: 25px; }
             #page-title { top: 30px; right: 25px; font-size: 0.6em; }
