@@ -689,9 +689,6 @@
                         <video id="vid-${data.id}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;">
                             <source src="${imageUrl}" type="video/mp4">
                         </video>
-                        <div class="audio-toggle" onclick="toggleAudio('vid-${data.id}', this)" style="position: absolute; top: 32px; right: 65px; z-index: 10; cursor: pointer; color: var(--accent-color); display: flex; align-items: center; justify-content: center; transition: all 0.3s; opacity: 0.8;">
-                            <span class="material-icons" style="font-size: 18px;">volume_off</span>
-                        </div>
                     ` : ''}
                 </div>
 
@@ -707,7 +704,14 @@
                 </div>
                 <div class="pulse-content">
                     <div class="pulse-header">
-                        <span class="project-tag">${data.project_name}</span>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span class="project-tag">${data.project_name}</span>
+                            ${imageUrl && imageUrl.toLowerCase().endsWith('.mp4') ? `
+                                <div class="audio-toggle" onclick="toggleAudio('vid-${data.id}', this)" style="cursor: pointer; color: var(--accent-color); display: flex; align-items: center; transition: all 0.3s; opacity: 0.6; z-index: 20;">
+                                    <span class="material-icons" style="font-size: 16px;">volume_off</span>
+                                </div>
+                            ` : ''}
+                        </div>
                         <span class="timestamp">${timeStr}</span>
                     </div>
                     <div class="pulse-label">${data.action_label}</div>
