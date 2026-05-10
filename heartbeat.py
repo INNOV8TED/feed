@@ -335,8 +335,19 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # it's likely a move/copy/import, not an active render/save.
                 try:
                     mtime = os.path.getmtime(file_path)
-                    if (time.time() - mtime) > 120.0:
-                        log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(time.time() - mtime)}s).")
+                    ctime = os.path.getctime(file_path)
+                    # Use the most recent of modification or creation time
+                    freshness = time.time() - max(mtime, ctime)
+                    
+                    # ASSET LENIENCY: Allow images/videos even if old, unless they are EXTREMELY old (1 week)
+                    # Or if they are in the "RANDOM" folder
+                    is_asset = ext in [".png", ".jpg", ".jpeg", ".mp4", ".mov", ".wav", ".mp3"]
+                    is_random = "RANDOM" in file_path.upper()
+                    
+                    threshold = 604800.0 if (is_asset or is_random) else 120.0 
+                    
+                    if freshness > threshold:
+                        log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(freshness)}s).")
                         return
                 except: pass
 
