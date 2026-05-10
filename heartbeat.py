@@ -207,7 +207,7 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
             "assets": assets,
             "metadata": {
                 "instagram": {
-                    "type": "reels" if is_video else "story",
+                    "type": "reel" if is_video else "story",
                     "shouldShareToFeed": True if is_video else False
                 }
             }
