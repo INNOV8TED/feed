@@ -37,7 +37,32 @@ QUOTA_FILE = "buffer_quota.json"
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
+# Persistence Cache
+CACHE_FILE = "studio_cache.json"
 last_size_cache = {}
+
+def load_cache():
+    global last_size_cache
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                last_size_cache = json.load(f)
+            log_msg(f"◈ [CACHE] Loaded {len(last_size_cache)} project states.")
+        except:
+            last_size_cache = {}
+
+def save_cache():
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(last_size_cache, f)
+    except:
+        pass
+
+load_cache()
+
+# ECHO-ZERO LOCK
+last_broadcast_time = 0
+BROADCAST_LOCK_PERIOD = 10  # Seconds
 pending_timers = {}
 
 # --- SINGLETON LOCK ---
@@ -570,6 +595,7 @@ def schedule_cleanup():
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
     log_msg("Initializing Studio Pulse Vision Pipeline...")
+    last_size_cache = load_cache()
     for root, dirs, files in os.walk(WATCH_PATH):
         if any(ignore in root for ignore in IGNORE_FOLDERS): continue
         for f in files:
