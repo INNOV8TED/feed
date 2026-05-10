@@ -911,14 +911,14 @@
         }
 
         async function loadInitial() {
-            // LOAD LAST 24 HOURS TO ENSURE FEED IS NEVER BLANK AFTER HIBERNATION
-            const sessionStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            // LOAD LAST 7 DAYS TO ENSURE DEEP HISTORY
+            const sessionStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
             const { data, error } = await supabaseClient
                 .from('studio_heartbeat')
                 .select('*')
                 .gt('created_at', sessionStart)
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(100);
             
             if (data) data.reverse().forEach(p => updateUI(p, true));
             
