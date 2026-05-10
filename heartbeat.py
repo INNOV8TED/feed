@@ -23,14 +23,15 @@ BUFFER_PROFILE_ID_MAIN = os.environ.get("BUFFER_PROFILE_ID")
 BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
 BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE") # Reserved for future use
 
-WATCH_PATH = r"C:\Users\Stephen Portman\Desktop\ACTIVE_WORK"
+# DYNAMIC WATCH PATH: Monitor the parent of the current script location
+WATCH_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
     ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_"
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
-DEBOUNCE_SECONDS = 8.0 # Seconds to wait for file system silence
+DEBOUNCE_SECONDS = 5.0 # Increased responsiveness
 DAILY_BUFFER_LIMIT = 8  # Safe limit for Free Plan
 QUOTA_FILE = "buffer_quota.json"
 
@@ -71,7 +72,9 @@ WORKFLOW_MAP = {
     ".aep":    {"label": "Motion Graphics & FX", "mood": "creative"},
     ".psd":    {"label": "Graphic Design", "mood": "artistic"},
     ".flp":    {"label": "Audio Mastering", "mood": "musical"}, 
-    ".mp4":    {"label": "Exporting Final Render", "mood": "success"}
+    ".mp4":    {"label": "Exporting Final Render", "mood": "success"},
+    ".wav":    {"label": "Audio Mastering", "mood": "musical"},
+    ".mp3":    {"label": "Audio Mastering", "mood": "musical"}
 }
 
 def get_project_name(file_path):
@@ -237,12 +240,20 @@ class HeartbeatHandler(FileSystemEventHandler):
         # DEEP DEBUG
         log_msg(f"[DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
 
-        # FLEXIBLE MATCHING
+        # FLEXIBLE MATCHING (Including Premiere Temp patterns)
         workflow = None
         for key in WORKFLOW_MAP:
             if ext.startswith(key):
                 workflow = WORKFLOW_MAP[key]
                 break
+        
+        # Premiere specific temp handling (Handles files with no extension during save)
+        if not workflow and len(ext) == 0:
+            try:
+                parent_dir = os.path.dirname(file_path)
+                if any(f.lower().endswith(".prproj") for f in os.listdir(parent_dir)):
+                    workflow = WORKFLOW_MAP.get(".prproj")
+            except: pass
 
         if workflow:
             project_name = get_project_name(file_path)
@@ -252,8 +263,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             # it's likely a move/copy/import, not an active render/save.
             try:
                 mtime = os.path.getmtime(file_path)
-                if (time.time() - mtime) > 5.0:
-                    # log_msg(f"[WATCHER] Passive file detected (old timestamp). Ignoring {os.path.basename(file_path)}.")
+                if (time.time() - mtime) > 30.0:
                     return
             except: pass
 
@@ -310,14 +320,19 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             software_map = {
                 ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
-                ".wav": "Ableton Live", ".mp4": "Media Encoder", ".mov": "DaVinci Resolve",
+                ".wav": "Studio Engine", ".mp3": "Studio Engine", ".mp4": "Media Encoder", 
+                ".mov": "DaVinci Resolve",
                 ".png": "Graphic Engine", ".jpg": "Graphic Engine"
             }
+            
+            # Smart Software detection for temp files
             software = software_map.get(ext, "Creative Engine")
+            if software == "Creative Engine" and workflow['label'] == "Deep in the Edit":
+                software = "Premiere Pro"
 
             # 2. CAPTURE VISION / VIDEO / AUDIO (Synchronous)
             asset_url = ""
-            is_video = (ext == ".mp4")
+            is_video = (ext == ".mp4" or ext == ".mov")
             is_audio = (ext in [".wav", ".mp3"])
             
             asset_file = None
@@ -351,14 +366,14 @@ class HeartbeatHandler(FileSystemEventHandler):
                 "action_label": workflow["label"],
                 "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
-                "is_milestone": (is_video or is_audio)
+                "is_milestone": (is_video or is_audio or software == "Premiere Pro")
             }
             
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
             res = supabase.table("studio_heartbeat").insert(data).execute()
             
             if res.data:
-                log_msg(f">>> [SYNC] SUCCESS! Vision Linked. Pulse ID: {res.data[0]['id']}")
+                log_msg(f">>> [SYNC] SUCCESS! Vision Linked: {asset_url}")
             else:
                 log_msg(">>> [SYNC ERROR] Insert failed.")
 
