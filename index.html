@@ -223,6 +223,36 @@
             z-index: 10;
         }
 
+        /* RENDER GLOW STYLES */
+        .render-glow {
+            border-color: #FFD700 !important;
+            box-shadow: 0 0 40px rgba(255, 215, 0, 0.25) !important;
+        }
+
+        .render-progress-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 4px;
+            background: rgba(255, 215, 0, 0.1);
+            overflow: hidden;
+            display: none;
+        }
+
+        .render-glow .render-progress-container { display: block; }
+
+        .render-progress-bar {
+            width: 40%;
+            height: 100%;
+            background: #FFD700;
+            box-shadow: 0 0 10px #FFD700;
+            animation: render-slide 2s infinite ease-in-out;
+        }
+
+        @keyframes render-slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(300%); }
+        }
+
         /* QUOTE DISPLAY */
         .daily-spark {
             font-style: italic;
@@ -562,10 +592,13 @@
             const isVideo = imageUrl.toLowerCase().endsWith('.mp4');
             
             const card = document.createElement('div');
-            card.className = 'pulse-card';
+            card.className = `pulse-card ${data.is_milestone ? 'render-glow' : ''}`;
             card.innerHTML = `
+                <div class="render-progress-container">
+                    <div class="render-progress-bar"></div>
+                </div>
                 <div class="heartbeat-light"></div>
-                ${data.is_milestone ? '<div class="milestone-badge">Project Delivered</div>' : ''}
+                ${data.is_milestone ? '<div class="milestone-badge" style="background: #FFD700; color: #000;">Master Render</div>' : ''}
                 
                 <div class="pulse-bg" style="background-image: url('${!isVideo ? imageUrl : ''}'); opacity: ${imageUrl ? 0.35 : 0}">
                     ${isVideo ? `
