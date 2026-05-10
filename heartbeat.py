@@ -260,7 +260,7 @@ def log_msg(msg):
     full_msg = f"[{time.ctime()}] {msg}"
     # Safe print for Windows console
     try:
-        print(full_msg.encode('ascii', 'ignore').decode('ascii'))
+        print(full_msg.encode('ascii', 'ignore').decode('ascii'), flush=True)
     except:
         pass
         
@@ -268,6 +268,7 @@ def log_msg(msg):
         with open("heartbeat.log", "a", encoding='utf-8') as f:
             f.write(full_msg + "\n")
             f.flush()
+            os.fsync(f.fileno()) # Force write to disk
     except: pass
 
 class HeartbeatHandler(FileSystemEventHandler):
@@ -334,7 +335,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # it's likely a move/copy/import, not an active render/save.
                 try:
                     mtime = os.path.getmtime(file_path)
-                    if (time.time() - mtime) > 60.0:
+                    if (time.time() - mtime) > 120.0:
                         log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(time.time() - mtime)}s).")
                         return
                 except: pass
@@ -704,7 +705,8 @@ def schedule_cleanup():
 
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
-    log_msg("Initializing Studio Pulse Vision Pipeline...")
+    log_msg(f"Initializing Studio Pulse Vision Pipeline... (PID: {os.getpid()})")
+    log_msg(f"Watch Path: {WATCH_PATH}")
     load_cache()
     for root, dirs, files in os.walk(WATCH_PATH):
         if any(ignore in root for ignore in IGNORE_FOLDERS): continue
@@ -716,8 +718,8 @@ if __name__ == "__main__":
                 except: pass
     log_msg(f"Primed {len(last_size_cache)} project files.")
 
-    # Redirect stderr to log for capturing silent crashes
-    sys.stderr = open("heartbeat.log", "a", encoding='utf-8')
+    # Redirect stderr to log for capturing silent crashes (line-buffered)
+    sys.stderr = open("heartbeat.log", "a", encoding='utf-8', buffering=1)
 
     # Start the maintenance schedule
     schedule_cleanup()
@@ -731,16 +733,16 @@ if __name__ == "__main__":
             log_msg(f"Monitoring {WATCH_PATH} with Buffer integration and Echo Fix (Active)...")
             
             while observer.is_alive():
-                # Self-check pulse in log every 30 minutes
+                # Self-check pulse in log every 2 minutes
                 now = int(time.time())
-                if now % 1800 < 2: # Capture roughly every 30 mins
+                if now % 120 < 1: # Capture every 2 mins
                     log_msg("◈ [STATUS] Heartbeat Active and Monitoring.")
-                    time.sleep(2) # Prevent double logging
+                    time.sleep(1) # Prevent double logging
                 time.sleep(1)
                 
-        except Exception as e:
+        except BaseException as e:
             err_msg = traceback.format_exc()
-            log_msg(f"!!! [CRITICAL WATCHER ERROR] {e}\n{err_msg}")
+            log_msg(f"!!! [CRITICAL WATCHER ERROR] {type(e).__name__}: {e}\n{err_msg}")
             log_msg("Restarting observer in 10 seconds...")
             try:
                 observer.stop()

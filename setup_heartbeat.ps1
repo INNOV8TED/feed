@@ -15,6 +15,7 @@ $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$VbsPath`"
 # Trigger: Start when any user logs on
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
 
+try {
     # Robust Settings: Unlimited execution time, auto-restart on failure
     $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Days 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     
