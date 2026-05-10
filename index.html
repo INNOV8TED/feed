@@ -426,13 +426,13 @@
         }
         .pulse-card { 
             flex: 0 0 auto;
-            min-height: 380px;
-            width: 480px;
+            height: 420px; /* FIXED CONSISTENT HEIGHT */
+            width: 520px;
             display: flex;
             flex-direction: column; 
             text-align: left; 
             justify-content: center;
-            padding: 50px;
+            padding: 40px;
             background: rgba(10, 10, 10, 0.95);
             backdrop-filter: blur(30px);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -489,9 +489,9 @@
         /* MOBILE OVERRIDES */
         @media (max-width: 600px) {
             #stream { gap: 20px; }
-            .column { min-width: 92vw; height: 80vh; }
-            .pulse-card { width: 100%; padding: 45px; }
-            .sprite-wrapper { width: 140px; height: 140px; }
+            .column { min-width: 92vw; height: auto; justify-content: flex-start; padding-top: 100px; }
+            .pulse-card { width: 100%; height: auto; min-height: 350px; padding: 35px; }
+            .sprite-wrapper { width: 130px; height: 130px; }
             .pulse-label { font-size: 2em; }
             #info-toggle { top: 25px; left: 25px; }
             #page-title { top: 30px; right: 25px; font-size: 0.6em; }
