@@ -899,9 +899,13 @@
                 .limit(20);
             
             if (data) data.reverse().forEach(p => updateUI(p, true));
+            
+            // INSTANT STATUS CHECK
+            checkStudioSilence();
         }
 
         loadInitial();
+        checkStudioSilence(); // Initial check before data to set baseline
 
         // LISTEN FOR BOTH INSERT (TEXT) AND UPDATE (IMAGE)
         supabaseClient.channel('public:studio_heartbeat')
