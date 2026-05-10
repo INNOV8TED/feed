@@ -451,7 +451,14 @@ class HeartbeatHandler(FileSystemEventHandler):
                     with open(asset_file, 'rb') as f:
                         file_ext = os.path.splitext(asset_file)[1]
                         storage_path = f"pulses/{int(time.time())}{file_ext}"
-                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                        content_type = "video/mp4" if asset_file.endswith(".mp4") else "image/jpeg"
+                        if asset_file.endswith(".mov"): content_type = "video/quicktime"
+                        if asset_file.endswith(".png"): content_type = "image/png"
+                        
+                        supabase.storage.from_('studio-assets').upload(
+                            storage_path, f.read(), 
+                            file_options={"content-type": content_type}
+                        )
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
                 except Exception as e:
