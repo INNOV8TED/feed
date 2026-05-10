@@ -912,14 +912,12 @@
         }
 
         async function loadInitial() {
-            // LOAD LAST 3 DAYS TO ENSURE STABLE HISTORY
-            const sessionStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+            // FETCH LAST 500 PULSES FOR DEEP HISTORY
             const { data, error } = await supabaseClient
                 .from('studio_heartbeat')
                 .select('*')
-                .gt('created_at', sessionStart)
                 .order('created_at', { ascending: false })
-                .limit(100);
+                .limit(500);
             
             if (data) data.reverse().forEach(p => updateUI(p, true));
             
