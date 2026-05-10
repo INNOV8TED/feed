@@ -502,8 +502,14 @@
             0%, 100% { opacity: 0.5; text-shadow: 0 0 5px var(--accent-color); }
             50% { opacity: 1; text-shadow: 0 0 20px var(--accent-color); }
         }
-        /* FORCE_DEPLOY_SYNC_V11 */
-    </style>
+        /* STANDBY CARD */
+        #standby-card {
+            border-color: #9370DB !important;
+            box-shadow: 0 0 30px rgba(147, 112, 219, 0.3) !important;
+            background: rgba(20, 10, 30, 0.95);
+        }
+        #standby-card .pulse-label { color: #9370DB; }
+        #standby-card .sprite { background-image: url('stephen_sleeping.png') !important; mix-blend-mode: normal; }
 </head>
 <body>
     <div id="page-title">IN-NO-V8 Work Feed</div>
@@ -701,34 +707,45 @@
             const now = Date.now();
             const minutesSinceActivity = (now - lastPulseTime) / (1000 * 60);
             
-            const latestCard = document.querySelector('.latest-pulse .pulse-card');
             const statusMsg = document.getElementById('system-status-msg');
             const statusIndicator = document.querySelector('#info-panel div:last-child');
+            let standbyCard = document.getElementById('standby-card');
 
             if (minutesSinceActivity >= 30) {
                 // STUDIO POWERED DOWN
-                if (latestCard) {
-                    const wrapper = latestCard.querySelector('.sprite-wrapper');
-                    const spriteImg = wrapper.querySelector('img');
-                    wrapper.classList.add('status-sleeping');
-                    if (spriteImg && !spriteImg.src.includes('stephen_sleeping.png')) {
-                        spriteImg.dataset.originalSrc = spriteImg.src;
-                        spriteImg.src = 'stephen_sleeping.png';
-                    }
+                if (!standbyCard) {
+                    standbyCard = document.createElement('div');
+                    standbyCard.id = 'standby-card';
+                    standbyCard.className = 'pulse-card media-themed';
+                    standbyCard.innerHTML = `
+                        <div class="heartbeat-light" style="background: #9370DB; display: block; box-shadow: 0 0 15px #9370DB;"></div>
+                        <div class="sprite-wrapper">
+                            <div class="sprite"></div>
+                        </div>
+                        <div class="pulse-content">
+                            <div class="pulse-header">
+                                <span class="project-tag" style="color: #9370DB;">SYSTEM STATUS</span>
+                                <span class="timestamp">STANDBY</span>
+                            </div>
+                            <div class="pulse-label">Neural Recharge</div>
+                            <div class="pulse-sub-label" style="color: #9370DB;">◈ Studio Powered Down. Stephen is recharging.</div>
+                            <div class="daily-spark" style="color: #9370DB; opacity: 0.6;">"The engine rests so the vision can grow."</div>
+                        </div>
+                    `;
+                    // Prepend to a new column or current? Let's just put it in the stream
+                    const col = document.createElement('div');
+                    col.id = 'standby-column';
+                    col.className = 'column';
+                    col.appendChild(standbyCard);
+                    streamContainer.prepend(col);
                 }
                 statusMsg.style.display = 'block';
                 if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: STANDBY ]<br>[ SYNC_LEVEL: LOW ]';
             } else {
                 // STUDIO ACTIVE
-                if (latestCard) {
-                    const wrapper = latestCard.querySelector('.sprite-wrapper');
-                    const spriteImg = wrapper.querySelector('img');
-                    wrapper.classList.remove('status-sleeping');
-                    if (spriteImg && spriteImg.dataset.originalSrc) {
-                        spriteImg.src = spriteImg.dataset.originalSrc;
-                        delete spriteImg.dataset.originalSrc;
-                    }
-                }
+                const standbyCol = document.getElementById('standby-column');
+                if (standbyCol) standbyCol.remove();
+                
                 statusMsg.style.display = 'none';
                 if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: ACTIVE ]<br>[ SYNC_LEVEL: OPTIMAL ]';
             }
