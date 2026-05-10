@@ -10,7 +10,7 @@ import random
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
-from datetime import datetime
+import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -144,7 +144,7 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
 
     # --- CURATED SCHEDULE: 1 REEL AND 1 GRID POST PER CHANNEL PER DAY ---
     try:
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.datetime.now().strftime('%Y-%m-%d')
         quota = {}
         if os.path.exists(QUOTA_FILE):
             with open(QUOTA_FILE, 'r') as f:
@@ -513,7 +513,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 square_file = f"square_{int(time.time())}.jpg"
                 try:
                     # FFmpeg 1:1 Square Crop
-                    subprocess.run(['ffmpeg', '-y', '-i', asset_file, '-vf', "crop=min(iw\,ih):min(iw\,ih)", square_file], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(['ffmpeg', '-y', '-i', asset_file, '-vf', r"crop=min(iw\,ih):min(iw\,ih)", square_file], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     with open(square_file, 'rb') as f:
                         storage_path = f"pulses/grid_{int(time.time())}.jpg"
                         supabase.storage.from_('studio-assets').upload(storage_path, f.read())
@@ -720,7 +720,7 @@ if __name__ == "__main__":
             
             while observer.is_alive():
                 # Self-check pulse in log every hour
-                if int(time.time()) % 3600 == 0:
+                if int(time.time()) % 600 == 0:
                     log_msg("◈ [STATUS] Heartbeat Active and Monitoring.")
                 time.sleep(1)
                 
