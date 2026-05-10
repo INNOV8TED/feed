@@ -176,9 +176,17 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
         else:
             assets = {"images": [{"url": asset_url}]}
 
+    # Selecy hashtags based on content
+    tags = " #StudioPulse #Innov8Labs #CreativeProcess #NeuralLink"
+    if is_video: tags += " #Reel #Production"
+    else: tags += " #StudioVision #BehindTheScenes"
+
+    # Neural Branding Description
+    description = f"◈ STUDIO BROADCAST ◈\n\n{message}\n\n📍 INNOV8 Labs (Lanna, TH)\n\n{tags}"
+
     variables = {
         "input": {
-            "text": message,
+            "text": description,
             "channelId": profile_id,
             "schedulingType": "automatic",
             "mode": "addToQueue",
@@ -186,7 +194,7 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
             "metadata": {
                 "instagram": {
                     "type": "reels" if is_video else "story",
-                    "shouldShareToFeed": False
+                    "shouldShareToFeed": True if is_video else False
                 }
             }
         }
