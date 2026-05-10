@@ -436,7 +436,6 @@
             -webkit-overflow-scrolling: touch;
             display: flex;
             align-items: center;
-            scroll-snap-type: x mandatory; /* SNAP FOR MOBILE/DESKTOP */
         }
         #stream { 
             height: 100%;
@@ -452,7 +451,6 @@
             flex-direction: column;
             justify-content: center;
             gap: 60px; /* RESTORED SPACING */
-            scroll-snap-align: center; /* ALIGN TO CENTER ON SNAP */
         }
         .pulse-card { 
             flex: 0 0 auto;
@@ -471,7 +469,7 @@
             overflow: hidden;
             transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .hero-card { height: 860px; width: 480px; }
+        .pulse-card.hero-card { height: 800px !important; width: 480px !important; }
         .pulse-label { font-size: 2.5em; margin: 20px 0; color: #fff; font-weight: 800; max-width: 85%; line-height: 1; letter-spacing: -1px; }
         .pulse-sub-label { font-size: 1.1em; font-family: 'Space Mono'; color: var(--accent-color); animation: breathe 3s infinite ease-in-out; }
         
@@ -517,7 +515,7 @@
             #stream { gap: 40px; padding: 0 10vw; align-items: flex-start; padding-top: 15vh; }
             .column { min-width: 85vw; height: auto; justify-content: flex-start; gap: 40px; }
             .pulse-card { width: 100%; height: auto; min-height: 400px; padding: 40px; }
-            .hero-card { height: 65vh !important; min-height: 500px; }
+            .hero-card { height: 600px !important; }
             .sprite-wrapper { width: 120px; height: 120px; }
             .pulse-label { font-size: 1.8em; }
             #info-toggle { top: 25px; left: 25px; }
