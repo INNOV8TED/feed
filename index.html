@@ -825,8 +825,7 @@
                 .select('*')
                 .gt('created_at', sessionStart)
                 .order('created_at', { ascending: false })
-                .limit(20)
-                .maybeSingle(); // Cache-bust: ${Date.now()}
+                .limit(20);
             
             if (data) data.reverse().forEach(p => updateUI(p, true));
         }
