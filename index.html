@@ -658,6 +658,10 @@
             // Unified Hero Logic
             const isHero = data.is_milestone && (isVideo || software.includes('PREMIERE') || software.includes('ABLETON'));
 
+            const timeStr = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const subLabel = parts[1] || 'Neural link stable.';
+            const quote = parts[4] || '';
+
             const card = document.createElement('div');
             card.className = `pulse-card media-themed ${isHero ? 'hero-card' : ''}`;
             
