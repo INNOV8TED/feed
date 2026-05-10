@@ -12,6 +12,7 @@ from watchdog.events import FileSystemEventHandler
 from supabase import create_client
 import datetime
 from dotenv import load_dotenv
+import sys
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,6 +36,7 @@ COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 5.0 # Increased responsiveness
 DAILY_BUFFER_LIMIT = 8  # Safe limit for Free Plan
 QUOTA_FILE = "buffer_quota.json"
+NETWORK_TIMEOUT = 15
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
@@ -89,8 +91,6 @@ if not get_lock():
 if not URL or not KEY:
     print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
     exit(1)
-
-supabase = create_client(URL, KEY)
 
 # Expanded Label Pool for Variety
 LABEL_POOL = {
@@ -227,7 +227,7 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
     }
     
     try:
-        response = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers)
+        response = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers, timeout=NETWORK_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
             if "errors" in data:
@@ -265,6 +265,7 @@ def log_msg(msg):
     try:
         with open("heartbeat.log", "a", encoding='utf-8') as f:
             f.write(full_msg + "\n")
+            f.flush()
     except: pass
 
 class HeartbeatHandler(FileSystemEventHandler):
@@ -368,6 +369,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                 )
                 pending_timers[debounce_key] = timer
                 timer.start()
+                
+                # Cleanup finished timers periodically
+                if len(pending_timers) > 50:
+                    finished = [k for k, t in pending_timers.items() if not t.is_alive()]
+                    for k in finished: del pending_timers[k]
 
         except Exception as e:
             log_msg(f"[PROCESS ERROR] {e}")
@@ -707,6 +713,9 @@ if __name__ == "__main__":
                 except: pass
     log_msg(f"Primed {len(last_size_cache)} project files.")
 
+    # Redirect stderr to log for capturing silent crashes
+    sys.stderr = open("heartbeat.log", "a", encoding='utf-8')
+
     # Start the maintenance schedule
     schedule_cleanup()
 
@@ -719,9 +728,11 @@ if __name__ == "__main__":
             log_msg(f"Monitoring {WATCH_PATH} with Buffer integration and Echo Fix (Active)...")
             
             while observer.is_alive():
-                # Self-check pulse in log every hour
-                if int(time.time()) % 600 == 0:
+                # Self-check pulse in log every 30 minutes
+                now = int(time.time())
+                if now % 1800 < 2: # Capture roughly every 30 mins
                     log_msg("◈ [STATUS] Heartbeat Active and Monitoring.")
+                    time.sleep(2) # Prevent double logging
                 time.sleep(1)
                 
         except Exception as e:
