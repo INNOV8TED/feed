@@ -655,7 +655,7 @@
             else mediaClass = '';
 
             const card = document.createElement('div');
-            const isHero = data.is_milestone && (software.includes('PREMIERE') || isVideo);
+            const isHero = data.is_milestone && (software.includes('PREMIERE') || software.includes('ABLETON') || isVideo || imageUrl.toLowerCase().endsWith('.wav'));
             card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
             card.innerHTML = `
                 <div class="render-progress-container">
@@ -805,7 +805,12 @@
             // 2. Manage Masonry Columns
             const isMobile = window.innerWidth <= 600;
             const maxPulsePerColumn = isMobile ? 1 : 2;
-            const isHero = data.is_milestone && (imageUrl.toLowerCase().endsWith('.mp4'));
+            
+            const parts = (data.mood_tag || '').split('|');
+            const software = (parts[3] || '').toUpperCase();
+            const imageUrl = parts[2] || '';
+            const isVideo = imageUrl.toLowerCase().endsWith('.mp4');
+            const isHero = data.is_milestone && (software.includes('PREMIERE') || software.includes('ABLETON') || isVideo || imageUrl.toLowerCase().endsWith('.wav'));
 
             if (!currentColumn || pulseInColumn >= maxPulsePerColumn || isHero) {
                 currentColumn = document.createElement('div');
@@ -835,9 +840,11 @@
                 .select('*')
                 .gt('created_at', sessionStart)
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(50);
             
-            if (data) data.reverse().forEach(p => updateUI(p, true));
+            if (data) {
+                data.reverse().forEach(p => updateUI(p, true));
+            }
         }
 
         loadInitial();
