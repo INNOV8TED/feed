@@ -75,9 +75,33 @@
             color: var(--accent-color);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             text-transform: uppercase;
             letter-spacing: 2px;
+            padding: 8px 15px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        #info-toggle:hover {
+            background: rgba(0, 255, 170, 0.1);
+            box-shadow: 0 0 20px rgba(0, 255, 170, 0.1);
+            color: #fff;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px var(--accent-color);
+            animation: neural-blink 2s infinite;
+        }
+
+        @keyframes neural-blink {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.2; transform: scale(1.4); }
         }
 
         .intro-title {
@@ -416,7 +440,10 @@
 </head>
 <body>
     <div id="page-title">IN-NO-V8 Work Feed</div>
-    <div id="info-toggle" onclick="togglePanel()">◈ System Status</div>
+    <div id="info-toggle" onclick="togglePanel()">
+        <div class="pulse-dot"></div>
+        System Status
+    </div>
     
     <a href="https://in-no-v8.com" id="nexus-link" target="_blank">
         <img src="innov8_logo.png" alt="IN-NO-V8 Logo">
@@ -435,10 +462,6 @@
             procedurally chosen studio personas. The feed flows horizontally, with the most 
             recent breakthroughs appearing at the left edge.
         </p>
-        <div style="margin-top: auto; font-family: 'Space Mono'; font-size: 0.7em; color: var(--accent-color);">
-            [ LINK_STATUS: ACTIVE ]<br>
-            [ SYNC_LEVEL: OPTIMAL ]
-        </div>
     </div>
 
     <div id="system-status-msg">[SYSTEM] Studio Powered Down. Stephen is recharging.</div>
@@ -464,8 +487,7 @@
 
         function togglePanel() {
             document.getElementById('info-panel').classList.toggle('open');
-            document.getElementById('info-toggle').innerText = 
-                document.getElementById('info-panel').classList.contains('open') ? '◈ Close Report' : '◈ System Status';
+            // Keep text consistent but the dot does the talking
         }
 
         function getThemeClass(project) {
