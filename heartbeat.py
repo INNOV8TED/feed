@@ -214,6 +214,9 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
         }
     }
     
+    log_msg(f"◈ [BUFFER] Dispatching {post_type} payload for {profile_id[-4:]}...")
+    # log_msg(f"◈ [DEBUG] Variables: {json.dumps(variables)}")
+    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {BUFFER_TOKEN}"
@@ -268,7 +271,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         if any(f in path for f in IGNORE_FILES + [".git"]):
             return
         
-        log_msg(f"[WATCHER] Change: {os.path.basename(event.src_path)}")
+        log_msg(f"[WATCHER] Change Detected: {os.path.basename(event.src_path)}")
         self.process_event(event)
         
     def on_created(self, event):
@@ -296,7 +299,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                 category = base_workflow.get("category", "graphic")
                 workflow = {
                     "label": random.choice(LABEL_POOL.get(category, ["Studio Activity"])),
-                    "mood": base_workflow["mood"]
+                    "mood": base_workflow["mood"],
+                    "category": category
                 }
                 break
         
