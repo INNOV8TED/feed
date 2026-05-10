@@ -92,16 +92,24 @@ if not URL or not KEY:
 
 supabase = create_client(URL, KEY)
 
-# Mapping file types to actions and moods
+# Expanded Label Pool for Variety
+LABEL_POOL = {
+    "edit":     ["Deep in the Edit", "Cutting the Master", "Timeline Sculpting", "Visual Storytelling", "Assembly Phase", "Edit Lock In Progress", "Color Correction"],
+    "motion":   ["Motion Graphics & FX", "Visual Synthesis", "Dynamic Simulation", "After Effects Magic", "Kinetic Design", "FX Pass", "Animating Reality"],
+    "graphic":  ["Graphic Design", "Visual Prototyping", "Digital Alchemy", "Aesthetic Refinement", "Composition Phase", "Pixel Perfecting", "Texture Mapping", "Branding Forge"],
+    "audio":    ["Audio Mastering", "Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"]
+}
+
+# Mapping file types to categories and moods
 WORKFLOW_MAP = {
-    ".prproj": {"label": "Deep in the Edit", "mood": "focused"},
-    ".aep":    {"label": "Motion Graphics & FX", "mood": "creative"},
-    ".psd":    {"label": "Graphic Design", "mood": "artistic"},
-    ".flp":    {"label": "Audio Mastering", "mood": "musical"}, 
-    ".wav":    {"label": "Audio Mastering", "mood": "musical"},
-    ".mp3":    {"label": "Audio Mastering", "mood": "musical"},
-    ".jpg":    {"label": "Graphic Design", "mood": "artistic"},
-    ".png":    {"label": "Graphic Design", "mood": "artistic"}
+    ".prproj": {"category": "edit",    "mood": "focused"},
+    ".aep":    {"category": "motion",  "mood": "creative"},
+    ".psd":    {"category": "graphic", "mood": "artistic"},
+    ".flp":    {"category": "audio",   "mood": "musical"}, 
+    ".wav":    {"category": "audio",   "mood": "musical"},
+    ".mp3":    {"category": "audio",   "mood": "musical"},
+    ".jpg":    {"category": "graphic", "mood": "artistic"},
+    ".png":    {"category": "graphic", "mood": "artistic"}
 }
 
 def get_project_name(file_path):
@@ -280,7 +288,13 @@ class HeartbeatHandler(FileSystemEventHandler):
         workflow = None
         for key in WORKFLOW_MAP:
             if ext.startswith(key):
-                workflow = WORKFLOW_MAP[key]
+                # Create a specific workflow instance with a random label
+                base_workflow = WORKFLOW_MAP[key]
+                category = base_workflow.get("category", "graphic")
+                workflow = {
+                    "label": random.choice(LABEL_POOL.get(category, ["Studio Activity"])),
+                    "mood": base_workflow["mood"]
+                }
                 break
         
         # Premiere specific temp handling (Handles files with no extension during save)
