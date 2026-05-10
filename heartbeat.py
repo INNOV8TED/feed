@@ -137,8 +137,9 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
         if today not in quota: quota[today] = {}
         if profile_id not in quota[today]: quota[today][profile_id] = {}
         
+        # INCREASED QUOTA: 1 Reel, 1 Story, 1 Grid Post per channel per day
         if quota[today][profile_id].get(post_type, 0) >= 1:
-            log_msg(f"◈ [CURATED] Daily {post_type} for channel {profile_id[-4:]} already filled.")
+            log_msg(f"◈ [QUOTA] Daily {post_type} for channel {profile_id[-4:]} is full.")
             return
             
         # Mark as sent
@@ -421,26 +422,29 @@ class HeartbeatHandler(FileSystemEventHandler):
             if is_video or is_audio:
                 # VIDEO/AUDIO POST (REELS/SHORTS)
                 media_type = "Sound" if is_audio else "Visual"
-                msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. Live feed: feed.in-no-v8.com"
+                msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
                 broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True, post_type="REEL")
             else:
-                # STATIC GRID POST (BLUEPRINT)
-                log_msg(f">>> [BLUEPRINT] Generating schematic for {project_name}...")
-                blueprint_file = generate_blueprint(asset_file)
-                if blueprint_file:
-                    try:
-                        with open(blueprint_file, 'rb') as f:
-                            storage_path = f"pulses/blueprint_{int(time.time())}.jpg"
-                            supabase.storage.from_('studio-assets').upload(storage_path, f.read())
-                            bp_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-                            
-                        msg = f"◈ STUDIO BLUEPRINT: #{project_name} R&D phase active. #{software} schematic. feed.in-no-v8.com"
-                        broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=bp_url, is_video=False, post_type="GRID")
-                        
-                        # Cleanup blueprint
-                        if os.path.exists(blueprint_file): os.remove(blueprint_file)
-                    except Exception as e:
-                        log_msg(f"[BLUEPRINT SYNC ERROR] {e}")
+                # GRID POST (SQUARE 1:1)
+                log_msg(f">>> [GRID] Generating square crop for {project_name}...")
+                square_file = f"square_{int(time.time())}.jpg"
+                try:
+                    # FFmpeg 1:1 Square Crop
+                    subprocess.run(['ffmpeg', '-y', '-i', asset_file, '-vf', "crop=min(iw\,ih):min(iw\,ih)", square_file], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    with open(square_file, 'rb') as f:
+                        storage_path = f"pulses/grid_{int(time.time())}.jpg"
+                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                        grid_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                    
+                    msg = f"◈ STUDIO PHASE: #{project_name} R&D active. #{software} development. feed.in-no-v8.com"
+                    broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=grid_url, is_video=False, post_type="GRID")
+                    if os.path.exists(square_file): os.remove(square_file)
+                except Exception as e:
+                    log_msg(f"[GRID SYNC ERROR] {e}")
+                
+                # ALSO POST AS STORY (FULL SCREEN SNAPSHOT)
+                msg_story = f"◈ LIVE STUDIO PULSE: {project_name} ◈"
+                broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_url=asset_url, is_video=False, post_type="STORY")
                 
         except Exception as e:
             err_msg = traceback.format_exc()
