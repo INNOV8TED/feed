@@ -15,12 +15,13 @@ $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$VbsPath`"
 # Trigger: Start when any user logs on
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
 
-Write-Host "Registering Task Scheduler item '$TaskName'..."
-try {
-    # Register the task with highest privileges
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -RunLevel Highest -Force
+    # Robust Settings: Unlimited execution time, auto-restart on failure
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Days 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+    
+    # Register the task with highest privileges and custom settings
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -RunLevel Highest -Force
     Write-Host "SUCCESS! Heartbeat will now start automatically whenever you log in." -ForegroundColor Green
-    Write-Host "Note: If the computer hibernates, the script stays running in the background automatically." -ForegroundColor Cyan
+    Write-Host "Persistence Hardened: The task will now restart automatically if it fails." -ForegroundColor Cyan
 } catch {
     if ($_.Exception.Message -match "Access is denied") {
         Write-Host "FAILED: Access Denied. Please right-click PowerShell and 'Run as Administrator'." -ForegroundColor Red

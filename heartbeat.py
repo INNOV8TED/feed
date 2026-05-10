@@ -133,7 +133,9 @@ def get_project_name(file_path):
         parts = relative.split(os.sep)
         if len(parts) > 1:
             return parts[0]
-        return "General Workspace"
+        
+        # If in root, use the filename itself (without extension)
+        return os.path.splitext(os.path.basename(file_path))[0]
     except:
         return "Studio Project"
 
@@ -332,7 +334,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # it's likely a move/copy/import, not an active render/save.
                 try:
                     mtime = os.path.getmtime(file_path)
-                    if (time.time() - mtime) > 30.0:
+                    if (time.time() - mtime) > 60.0:
+                        log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(time.time() - mtime)}s).")
                         return
                 except: pass
 
@@ -344,7 +347,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                     # If it's a project file (not a render) and size hasn't changed, ignore it.
                     # This prevents "Open" events from triggering pulses.
                     if ext != ".mp4" and last_size is not None and current_size == last_size:
-                        # log_msg(f"[WATCHER] Size unchanged for {os.path.basename(file_path)}. Skipping pulse.")
+                        log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: Size unchanged ({current_size} bytes).")
                         return
                     
                     last_size_cache[file_path] = current_size
