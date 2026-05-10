@@ -21,7 +21,7 @@ MAX_STORAGE_MB = 900 # 90% of 1GB
 MAX_AGE_DAYS = 45
 
 def run_cleanup():
-    print(f"\n◈ INITIALIZING STUDIO PULSE CLEANUP [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ◈")
+    print(f"\n[SYSTEM] INITIALIZING STUDIO PULSE CLEANUP [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
     
     try:
         # 1. TIME-BASED CLEANUP (DATABASE & STORAGE)

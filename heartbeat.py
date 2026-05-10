@@ -10,6 +10,7 @@ import random
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -97,9 +98,10 @@ WORKFLOW_MAP = {
     ".aep":    {"label": "Motion Graphics & FX", "mood": "creative"},
     ".psd":    {"label": "Graphic Design", "mood": "artistic"},
     ".flp":    {"label": "Audio Mastering", "mood": "musical"}, 
-    ".mp4":    {"label": "Exporting Final Render", "mood": "success"},
     ".wav":    {"label": "Audio Mastering", "mood": "musical"},
-    ".mp3":    {"label": "Audio Mastering", "mood": "musical"}
+    ".mp3":    {"label": "Audio Mastering", "mood": "musical"},
+    ".jpg":    {"label": "Graphic Design", "mood": "artistic"},
+    ".png":    {"label": "Graphic Design", "mood": "artistic"}
 }
 
 def get_project_name(file_path):
@@ -183,7 +185,7 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
     else: tags += " #StudioVision #BehindTheScenes"
 
     # Neural Branding Description
-    description = f"◈ STUDIO BROADCAST ◈\n\n{message}\n\n📍 INNOV8 Labs (Lanna, TH)\n\n{tags}"
+    description = f"◈ STUDIO BROADCAST ◈\n\n{text}\n\n📍 INNOV8 Labs (Lanna, TH)\n\n{tags}"
 
     variables = {
         "input": {
@@ -337,15 +339,22 @@ class HeartbeatHandler(FileSystemEventHandler):
 
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
+        global last_broadcast_time
         try:
-            # COOLDOWN (Burst Mode: 15s)
-            cooldown_key = f"{project_name}_{workflow['label']}"
+            # 0. GLOBAL COOLDOWN (Echo-Zero Lock)
             current_time = time.time()
+            if current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD:
+                # log_msg(f"[LOCK] Suppressing duplicate burst for {project_name}.")
+                return
+            
+            # 1. PROJECT COOLDOWN (Burst Mode: 15s)
+            cooldown_key = f"{project_name}_{workflow['label']}"
             if cooldown_key in last_sent_cache:
                 if current_time - last_sent_cache[cooldown_key] < 15:
                     return
             
             last_sent_cache[cooldown_key] = current_time
+            last_broadcast_time = current_time
             
             # 1. PREPARE METADATA
             ext = os.path.splitext(file_path)[1].lower().strip()
@@ -363,11 +372,22 @@ class HeartbeatHandler(FileSystemEventHandler):
             software = software_map.get(ext, "Creative Engine")
             if software == "Creative Engine" and workflow['label'] == "Deep in the Edit":
                 software = "Premiere Pro"
+            
+            # Photoshop Heuristics
+            if software == "Graphic Engine" or ext in [".jpg", ".png"]:
+                try:
+                    parent_dir = os.path.dirname(file_path)
+                    if any(f.lower().endswith(".psd") for f in os.listdir(parent_dir)):
+                        software = "Photoshop"
+                    elif "DEER" in project_name.upper():
+                        software = "Photoshop"
+                except: pass
 
-            # 2. CAPTURE VISION / VIDEO / AUDIO (Synchronous)
+            # 2. CAPTURE VISION / VIDEO / AUDIO / IMAGE (Synchronous)
             asset_url = ""
             is_video = (ext == ".mp4" or ext == ".mov")
             is_audio = (ext in [".wav", ".mp3"])
+            is_image = (ext in [".jpg", ".jpeg", ".png"])
             
             asset_file = None
             if is_video:
@@ -376,6 +396,18 @@ class HeartbeatHandler(FileSystemEventHandler):
             elif is_audio:
                 log_msg(f">>> [AUDIO] Generating visualizer for {os.path.basename(file_path)}...")
                 asset_file = generate_audio_visualizer(file_path)
+            elif is_image:
+                # Use the saved image directly!
+                log_msg(f">>> [IMAGE] Using saved file as pulse asset: {os.path.basename(file_path)}")
+                try:
+                    temp_asset = f"image_pulse_{int(time.time())}{ext}"
+                    import shutil
+                    # Wait a bit for Photoshop to release the file if needed
+                    time.sleep(1)
+                    shutil.copy2(file_path, temp_asset)
+                    asset_file = temp_asset
+                except Exception as e:
+                    log_msg(f"[IMAGE COPY ERROR] {e}")
             
             if not asset_file:
                 asset_file = capture_screenshot()
@@ -388,9 +420,6 @@ class HeartbeatHandler(FileSystemEventHandler):
                         supabase.storage.from_('studio-assets').upload(storage_path, f.read())
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
-                    # Cleanup temp files but keep project source
-                    if ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file) and os.path.exists(asset_file):
-                        os.remove(asset_file)
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
 
@@ -400,7 +429,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 "action_label": workflow["label"],
                 "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
-                "is_milestone": (is_video or is_audio or software == "Premiere Pro")
+                "is_milestone": (is_video or is_audio or software == "Premiere Pro" or software == "Photoshop")
             }
             
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
@@ -448,6 +477,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                 msg_story = f"◈ LIVE STUDIO PULSE: {project_name} ◈"
                 broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_url=asset_url, is_video=False, post_type="STORY")
                 
+            # --- FINAL CLEANUP ---
+            if asset_file and ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file or "image_pulse_" in asset_file) and os.path.exists(asset_file):
+                try:
+                    os.remove(asset_file)
+                except: pass
+
         except Exception as e:
             err_msg = traceback.format_exc()
             log_msg(f">>> [SYNC ERROR] {e}\n{err_msg}")
