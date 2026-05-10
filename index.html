@@ -912,12 +912,14 @@
         }
 
         async function loadInitial() {
-            // FETCH LAST 500 PULSES FOR DEEP HISTORY
+            // LOAD LAST 3 DAYS (MAX 40 POSTS) FOR OPTIMAL PERFORMANCE
+            const sessionStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
             const { data, error } = await supabaseClient
                 .from('studio_heartbeat')
                 .select('*')
+                .gt('created_at', sessionStart)
                 .order('created_at', { ascending: false })
-                .limit(500);
+                .limit(40);
             
             if (data) data.reverse().forEach(p => updateUI(p, true));
             
