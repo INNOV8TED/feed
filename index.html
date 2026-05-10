@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STUDIO PULSE // LIVE FEED</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="icon" type="image/png" href="studio_pulse_favicon.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;600;800&display=swap');
@@ -518,15 +519,35 @@
         .close-panel:hover { opacity: 1; }
 
         /* MOBILE OVERRIDES */
+        /* MOBILE HUD REFINEMENT */
         @media (max-width: 600px) {
-            #stream { gap: 20px; }
-            .column { min-width: 92vw; height: auto; justify-content: flex-start; padding-top: 100px; }
-            .pulse-card { width: 100%; height: auto; min-height: 350px; padding: 35px; }
+            #stream { gap: 0; }
+            .column { 
+                min-width: 100vw; 
+                height: 100%; 
+                justify-content: center; 
+                align-items: center;
+                gap: 80px;
+                padding: 120px 20px;
+                scroll-snap-align: center;
+            }
+            .pulse-card { 
+                width: 90vw !important; 
+                height: auto !important; 
+                min-height: 380px !important; 
+                padding: 30px; 
+                margin: 0 auto;
+                flex-shrink: 0;
+            }
+            .hero-card { 
+                height: 55vh !important; 
+                min-height: 500px !important; 
+            }
             .sprite-wrapper { width: 130px; height: 130px; }
-            .pulse-label { font-size: 2em; }
-            #info-toggle { top: 25px; left: 25px; }
-            #page-title { top: 30px; right: 25px; font-size: 0.6em; }
-            #nexus-link { bottom: 25px; left: 25px; width: 110px; }
+            .pulse-label { font-size: 1.8em; margin: 15px 0; }
+            #info-toggle { top: 20px; left: 20px; font-size: 0.8em; }
+            #page-title { top: 20px; right: 20px; font-size: 1em; }
+            #nexus-link { bottom: 20px; left: 20px; width: 100px; }
         }
         
         @keyframes breathe {
