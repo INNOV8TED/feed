@@ -238,6 +238,15 @@ def get_video_dimensions(path):
                 "instagram": {
                     "type": "reel" if is_video else "story",
                     "shouldShareToFeed": True if is_video else False
+                },
+                "youtube": {
+                    "type": "short" if is_video else "video"
+                },
+                "facebook": {
+                    "type": "reel" if is_video else "story"
+                },
+                "tiktok": {
+                    "type": "video"
                 }
             }
         }
@@ -871,8 +880,8 @@ def generate_audio_visualizer(audio_path):
         
         # If we have lyrics, burn them in with much better styling
         if has_lyrics and os.path.exists(srt_file):
-            # Minimalist Vertical Layout: Smaller font, subtle outline, positioned between UI elements
-            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=2,FontSize=28,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=450'[v]"
+            # Debug Positioning: Middle Center, Small Font
+            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=10,FontSize=20,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=0'[v]"
         else:
             # Add a high-visibility labels for instrumental tracks
             filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontname='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
