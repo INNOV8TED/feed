@@ -608,34 +608,38 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
 
-            # 3. DISPATCH FULL PULSE TO SUPABASE
+            # 3. CHANNEL IDENTIFICATION
+            channel_id = "INNOV8"
+            buffer_profile = BUFFER_PROFILE_ID_MAIN
+            path_upper = file_path.upper()
+            proj_upper = project_name.upper()
+            
+            if "LANNA" in path_upper or "LANNA" in proj_upper:
+                channel_id = "LANNA"
+                buffer_profile = BUFFER_PROFILE_ID_LANNA
+            elif any(x in path_upper for x in ["BLUE CHROMATIC", "TRIANGLE", "DEER"]) or any(x in proj_upper for x in ["BLUE", "TRIANGLE", "DEER"]):
+                channel_id = "BLUE"
+                buffer_profile = BUFFER_PROFILE_ID_BLUE
+
+            # 4. DISPATCH FULL PULSE TO SUPABASE (CHANNEL-AWARE)
             is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]"])
             status_text = "Social active." if is_social_folder else "Neural link active."
+            # Data structure: mood|status|url|software|quote|channel_id
             data = {
                 "project_name": project_name,
                 "action_label": action_label,
-                "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}", 
+                "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}|{channel_id}", 
                 "source": "Windows-Workstation",
                 "is_milestone": (is_video or is_audio or software == "Premiere Pro" or software == "Photoshop")
             }
             
-            log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software}...")
+            log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software} (Channel: {channel_id})...")
             res = supabase.table("studio_heartbeat").insert(data).execute()
             
             if res.data:
                 log_msg(f">>> [SYNC] SUCCESS! Vision Linked: {asset_url}")
             else:
                 log_msg(">>> [SYNC ERROR] Insert failed.")
-
-            # 4. ROUTE TO BUFFER
-            buffer_profile = BUFFER_PROFILE_ID_MAIN
-            path_upper = file_path.upper()
-            proj_upper = project_name.upper()
-            
-            if "LANNA" in path_upper or "LANNA" in proj_upper:
-                buffer_profile = BUFFER_PROFILE_ID_LANNA
-            elif any(x in path_upper for x in ["BLUE CHROMATIC", "TRIANGLE", "DEER"]) or any(x in proj_upper for x in ["BLUE", "TRIANGLE", "DEER"]):
-                buffer_profile = BUFFER_PROFILE_ID_BLUE
 
             if is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING

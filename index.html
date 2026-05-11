@@ -69,6 +69,11 @@
             filter: brightness(1) !important;
         }
 
+        /* CHANNEL THEMES */
+        .channel-lanna { --accent-color: #ff99cc !important; border-color: rgba(255, 153, 204, 0.3) !important; }
+        .channel-blue  { --accent-color: #00ccff !important; border-color: rgba(0, 204, 255, 0.3) !important; }
+        .channel-innov8 { --accent-color: #BF00FF !important; border-color: rgba(191, 0, 255, 0.3) !important; }
+
         .cinematic-mode .card-logo {
             opacity: 0.9;
             bottom: 30px; right: 30px; /* PINNED TO BOTTOM RIGHT */
@@ -77,18 +82,13 @@
             filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
         }
 
-        /* DISTINCT SOCIAL THEME: ELECTRIC VIOLET */
-        .cinematic-mode {
-            --accent-color: #BF00FF; /* ELECTRIC VIOLET */
-            border-color: rgba(191, 0, 255, 0.4) !important;
-            box-shadow: 0 0 40px rgba(191, 0, 255, 0.1) !important;
-        }
+        /* DISTINCT SOCIAL THEME */
         .cinematic-mode .pulse-label {
-            color: #BF00FF;
-            text-shadow: 0 0 15px rgba(191, 0, 255, 0.3);
+            color: var(--accent-color);
+            text-shadow: 0 0 15px var(--accent-color);
         }
         .cinematic-mode .pulse-sub-label {
-            color: #BF00FF;
+            color: var(--accent-color);
             opacity: 0.8;
             font-weight: 700;
         }
@@ -1014,7 +1014,15 @@
                              (data.action_label || '').includes('◈');
 
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''}`;
+            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''} channel-${channelId.toLowerCase()}`;
+            
+            // Channel Branding Map
+            const channelBranding = {
+                'LANNA': { logo: 'lanna_logo.png', color: '#ff99cc' },
+                'BLUE':  { logo: 'blue_logo.png', color: '#00ccff' },
+                'INNOV8': { logo: 'innov8_logo.png', color: '#BF00FF' }
+            };
+            const brand = channelBranding[channelId] || channelBranding['INNOV8'];
             
             card.innerHTML = `
                 <div class="render-progress-container">
@@ -1096,7 +1104,7 @@
                 </div>
                 ${isSocial ? `
                 <div class="card-logo">
-                    <img src="innov8_logo.png" alt="Logo" style="width: 100%;">
+                    <img src="${brand.logo}" alt="Logo" style="width: 100%;">
                 </div>
                 ` : ''}
             `;
