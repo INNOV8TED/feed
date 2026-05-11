@@ -443,11 +443,26 @@ class HeartbeatHandler(FileSystemEventHandler):
             is_image = (ext in [".jpg", ".jpeg", ".png"])
             is_high_quality = is_video or is_audio or is_image
 
-            # 0. GLOBAL COOLDOWN (Echo-Zero Lock)
+            # 1. PRODUCTION-ONLY FILTER (Video/Audio)
+            # Only pulse videos/audio if they are in an output-related folder
+            # This prevents stock assets, footage, and source files from triggering pulses.
+            path_upper = file_path.upper()
+            output_keywords = ["EXPORTS", "MASTERS", "FINAL", "SOCIAL", "MEMORIES", "OUTPUT", "RENDER"]
+            asset_keywords = ["ASSETS", "FOOTAGE", "STOCK", "SOURCE", "RAW", "INGEST", "MATERIAL"]
+            
+            if is_video or is_audio:
+                is_in_output = any(k in path_upper for k in output_keywords)
+                is_in_asset = any(k in path_upper for k in asset_keywords)
+                
+                if is_in_asset or not is_in_output:
+                    # It's an asset or not in a known output folder - skip pulse
+                    return
+
+            # 2. GLOBAL COOLDOWN (Echo-Zero Lock)
             if current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD:
                 return
             
-            # 1. DIGITAL FINGERPRINT CHECK (Rename/Move Guard)
+            # 3. DIGITAL FINGERPRINT CHECK (Rename/Move Guard)
             # Prevent re-pulsing if the file was just renamed or moved
             try:
                 f_size = os.path.getsize(file_path)
