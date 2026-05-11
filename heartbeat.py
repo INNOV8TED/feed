@@ -466,10 +466,16 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             if is_video or is_audio:
                 is_in_output = any(k in path_upper for k in output_keywords)
-                is_in_asset = any(k in path_upper for k in asset_keywords)
+                is_in_asset = any(k in path_upper for k in asset_keywords) or any(k in path_upper for k in ["IMPORT", "USE", "素材"])
                 
+                # STRIKE TEAM: If it's not in an explicit output folder, or it's in an asset folder, KILL IT.
                 if is_in_asset or not is_in_output:
-                    # It's an asset or not in a known output folder - skip pulse
+                    return
+                
+                # ROOT GUARD: If the file is too shallow in the project (likely an asset drag-and-drop), skip it.
+                rel_path = os.path.relpath(file_path, WATCH_PATH)
+                if len(rel_path.split(os.sep)) < 3 and not any(k in path_upper for k in ["SOCIAL", "MEMORIES"]):
+                    # Likely root-level asset
                     return
 
             # 2. GLOBAL COOLDOWN (Echo-Zero Lock)
