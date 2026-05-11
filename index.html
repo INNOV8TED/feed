@@ -733,6 +733,7 @@
                 gap: 40px; 
                 padding: 60px 20px;
                 scroll-snap-align: center; /* SNAP TO CENTER */
+                scroll-snap-stop: always; /* PREVENT SKIPPING SLIDES */
             }
             .pulse-card { 
                 width: 90vw !important; 
@@ -1261,6 +1262,11 @@
                     // Only preload="auto" for the 5 most recent items
                     const shouldPreload = (index >= pulses.length - 5);
                     updateUI(p, true, shouldPreload);
+                });
+                
+                // FORCE START AT LATEST (LEFT EDGE)
+                requestAnimationFrame(() => {
+                    mainContainer.scrollLeft = 0;
                 });
             }
             
