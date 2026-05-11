@@ -168,6 +168,16 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
     except Exception as e:
         log_msg(f"[QUOTA ERROR] {e}")
 
+def get_video_dimensions(path):
+    """Detect aspect ratio for smart routing."""
+    try:
+        cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', path]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        data = json.loads(res.stdout)
+        return int(data['streams'][0]['width']), int(data['streams'][0]['height'])
+    except:
+        return 1920, 1080 # Default to vertical
+
     if not BUFFER_TOKEN or "your_buffer" in BUFFER_TOKEN:
         log_msg("Buffer token missing. Skipping broadcast.")
         return
@@ -543,10 +553,16 @@ class HeartbeatHandler(FileSystemEventHandler):
                 buffer_profile = BUFFER_PROFILE_ID_BLUE
 
             if is_video or is_audio:
-                # VIDEO/AUDIO POST (REELS/SHORTS)
+                # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
+                width, height = get_video_dimensions(file_path)
+                is_square = abs(width - height) < (width * 0.1)
+                
+                target_type = "REEL"
+                if is_square: target_type = "GRID"
+                
                 media_type = "Sound" if is_audio else "Visual"
                 msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
-                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True, post_type="REEL")
+                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True, post_type=target_type)
             else:
                 # GRID POST (SQUARE 1:1)
                 log_msg(f">>> [GRID] Generating square crop for {project_name}...")
@@ -694,11 +710,19 @@ def extract_random_clip(video_path):
         start = random.uniform(2, max(2, duration - 12))
         output_file = f"clip_{int(time.time())}.mp4"
         
-        # 3. Extract 10s clip with vertical 1080x1920 center-crop
-        # Using baseline profile and faststart for maximum web compatibility and instant playback
+        # 3. Extract 10s clip
+        # Detect if we should crop to vertical or keep square
+        width, height = get_video_dimensions(video_path)
+        is_square = abs(width - height) < (width * 0.1) # Within 10% of 1:1
+        
+        vf = "scale=w=-1:h=1920,crop=1080:1920"
+        if is_square:
+            # If square, just scale to 1080x1080 (standard Insta Grid size)
+            vf = "scale=1080:1080"
+            
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', '10', '-i', video_path,
-            '-vf', "scale=w=-1:h=1920,crop=1080:1920",
+            '-vf', vf,
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', 
             '-profile:v', 'baseline', '-level', '3.0',
             '-movflags', '+faststart',

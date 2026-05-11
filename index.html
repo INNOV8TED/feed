@@ -53,46 +53,37 @@
             backdrop-filter: blur(5px);
         }
 
-        /* SOCIAL CARD (LATEST) */
-        .social-card {
-            border-color: var(--accent-color) !important;
-            box-shadow: 0 0 50px rgba(0, 255, 170, 0.2) !important;
-        }
-
-        .social-card .pulse-header,
-        .social-card .pulse-sub-label,
-        .social-card .daily-spark,
-        .social-card div[style*="font-size: 0.65em"] {
+        /* CINEMATIC SOCIAL MODE (MEMORIES) */
+        .cinematic-mode .pulse-header,
+        .cinematic-mode .pulse-sub-label,
+        .cinematic-mode .daily-spark,
+        .cinematic-mode .pulse-label,
+        .cinematic-mode .sprite-wrapper,
+        .cinematic-mode .milestone-badge,
+        .cinematic-mode .render-progress-container,
+        .cinematic-mode div[style*="font-size: 0.65em"] {
             display: none !important;
         }
 
-        .social-card .sprite-wrapper {
-            bottom: 20px !important;
-            right: 20px !important;
-            width: 120px !important;
-            height: 120px !important;
-        }
-
-        .social-card .sprite {
-            background-image: url('innov8_logo.png') !important;
-            mix-blend-mode: normal !important;
-            background-size: contain;
-            filter: drop-shadow(0 0 15px var(--accent-color));
-        }
-
-        .social-card .pulse-bg {
+        .cinematic-mode .pulse-bg {
             opacity: 1 !important;
             filter: brightness(1) !important;
         }
 
-        .social-card .pulse-label {
-            font-size: 3.2em !important;
-            text-align: center;
-            width: 100%;
-            margin-top: 40px !important;
-            background: linear-gradient(to bottom, #fff, var(--accent-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .card-logo {
+            position: absolute;
+            bottom: 30px; left: 30px;
+            width: 100px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+
+        .cinematic-mode .card-logo {
+            opacity: 0.8;
+            bottom: 50px; left: 50px;
+            width: 160px;
         }
 
         /* VIDEO UX */
@@ -1008,8 +999,12 @@
             else mediaClass = '';
 
             const isHero = isVideo; 
+            const isSocial = (data.project_name || '').toUpperCase().includes('SOCIAL') || 
+                             (data.project_name || '').toUpperCase().includes('MEMORIES') || 
+                             (data.action_label || '').includes('◈');
+
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
+            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''}`;
             
             card.innerHTML = `
                 <div class="render-progress-container">
@@ -1087,7 +1082,9 @@
                     <div style="font-size: 0.65em; opacity: 0.3; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; font-family: 'Space Mono';">
                         Engine: ${software}
                     </div>
-                    ${quote ? `<div class="daily-spark">"${quote}"</div>` : ''}
+                    <div class="card-logo">
+                        <img src="innov8_logo.png" alt="Logo" style="width: 100%;">
+                    </div>
                 </div>
             `;
             return card;
