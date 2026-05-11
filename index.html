@@ -162,22 +162,23 @@
         .hud-bar {
             position: fixed;
             left: 0; width: 100%;
-            padding: 10px 40px;
+            height: 40px; /* EVEN THINNER */
+            background: rgba(10, 10, 10, 0.4); 
+            backdrop-filter: blur(15px);
+            z-index: 4000; /* BRING TO FRONT */
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 0 40px;
             font-family: 'Space Mono', monospace;
             font-size: 0.7em;
             color: var(--accent-color);
             letter-spacing: 2px;
-            z-index: 2500;
-            pointer-events: none;
-            background: linear-gradient(to right, rgba(0,0,0,0.2), transparent, rgba(0,0,0,0.2));
-            backdrop-filter: blur(2px);
+            pointer-events: none; /* CLICK THROUGH BAR */
         }
-
-        .hud-top { top: 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .hud-bottom { bottom: 0; border-top: 1px solid rgba(255,255,255,0.05); }
+        .hud-top { top: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .hud-bottom { bottom: 0; border-top: 1px solid rgba(255, 255, 255, 0.05); }
+        .hud-tag { pointer-events: auto; } /* BUT ALLOW INTERACTION WITH TAGS IF NEEDED */
 
         .hud-tag { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
         .hud-tag span { opacity: 0.5; }
@@ -196,7 +197,7 @@
 
         .data-stream {
             position: fixed;
-            top: 60px; right: 40px;
+            top: 70px; right: 40px; /* MOVED DOWN TO CLEAR HUD */
             width: 150px;
             height: 200px;
             overflow: hidden;
@@ -205,7 +206,7 @@
             color: var(--accent-color);
             opacity: 0.3;
             pointer-events: none;
-            z-index: 2400;
+            z-index: 4000;
             text-align: right;
             line-height: 1.5;
         }
@@ -265,20 +266,17 @@
 
         #info-toggle {
             position: fixed;
-            top: 40px; left: 40px;
-            z-index: 2100;
+            top: 70px; left: 40px; /* MOVED DOWN TO CLEAR HUD */
+            z-index: 4000; /* ABOVE HUD */
             cursor: pointer;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.8em;
-            color: var(--accent-color);
+            transition: all 0.3s;
             display: flex;
             align-items: center;
-            gap: 12px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            padding: 8px 15px;
+            gap: 15px;
+            background: rgba(20,20,20,0.4);
+            padding: 10px 20px;
             border-radius: 4px;
-            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.05);
         }
 
         #info-toggle:hover {
@@ -491,15 +489,15 @@
         /* PAGE TITLE */
         #page-title {
             position: fixed;
-            top: 40px; right: 60px;
+            top: 15px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 3500;
             font-family: 'Space Mono', monospace;
             font-size: 1.2em;
-            font-weight: 700;
-            letter-spacing: 12px;
+            letter-spacing: 0.5em;
             color: var(--accent-color);
             text-transform: uppercase;
-            opacity: 0.8;
-            z-index: 100;
+            pointer-events: none;
         }
 
         /* MEDIA THEMES */
@@ -606,11 +604,11 @@
         /* GLOBAL AESTHETIC */
         #main-container { 
             height: 100vh;
-            padding: 0;
+            padding: 80px 0; /* MORE BREATHING ROOM AT TOP/BOTTOM */
             overflow-x: auto;
             overflow-y: hidden;
             background: transparent;
-            scroll-behavior: smooth; /* HARDENED SMOOTH SCROLLING */
+            scroll-behavior: smooth; 
             -webkit-overflow-scrolling: touch;
         }
         #stream { 
@@ -631,21 +629,21 @@
         }
         .pulse-card { 
             flex: 0 0 auto;
-            height: 420px; 
+            height: 400px; /* SLIGHTLY SHORTER FOR BREATH */
             width: 520px;
             display: flex;
             flex-direction: column; 
             text-align: left; 
             justify-content: center;
             padding: 40px;
-            background: rgba(10, 10, 10, 0.9); /* OPAQUE FOR PERFORMANCE */
+            background: rgba(10, 10, 10, 0.9); 
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
             position: relative;
             overflow: hidden;
-            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); /* SIMPLER TRANSITION */
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); 
         }
-        .hero-card { height: 920px !important; width: 480px !important; }
+        .hero-card { height: 800px !important; width: 480px !important; } /* SIGNIFICANTLY MORE ROOM */
         .pulse-label { 
             font-size: 2.5em; 
             margin: 20px 0; 
@@ -721,16 +719,16 @@
         .close-panel:hover { opacity: 1; }
 
         /* MOBILE OVERRIDES */
-        /* MOBILE HUD REFINEMENT */
         @media (max-width: 600px) {
+            #main-container { padding: 60px 0; } /* REDUCED MOBILE PADDING */
             #stream { gap: 0; }
             .column { 
                 min-width: 100vw; 
                 height: 100%; 
                 justify-content: center; 
                 align-items: center;
-                gap: 80px;
-                padding: 120px 20px;
+                gap: 40px; /* REDUCED GAP */
+                padding: 60px 20px;
                 scroll-snap-align: center;
             }
             .pulse-card { 
@@ -742,26 +740,25 @@
                 flex-shrink: 0;
             }
             .hero-card { 
-                height: 55vh !important; 
-                min-height: 500px !important; 
+                height: 50vh !important; 
+                min-height: 450px !important; 
             }
-            .sprite-wrapper { width: 130px; height: 130px; }
-            .pulse-label { font-size: 1.8em; margin: 15px 0; }
-            #info-toggle { top: 20px; left: 20px; font-size: 0.8em; }
+            #info-toggle { top: 50px; left: 20px; font-size: 0.7em; padding: 5px 10px; } /* CLEAR HUD */
             #page-title { 
                 top: auto; 
-                bottom: 20px; 
-                right: 20px; 
-                font-size: 0.9em; 
+                bottom: 50px; 
+                left: 50%;
+                transform: translateX(-50%);
+                font-size: 0.8em; 
                 opacity: 0.5;
             }
-            #nexus-link { bottom: 20px; left: 20px; width: 100px; }
+            #nexus-link { bottom: 60px; left: 20px; width: 80px; }
             
             .audio-toggle {
-                top: 25px !important;
-                right: 60px !important;
-                padding: 15px !important; /* LARGE HIT AREA */
-                transform: scale(1.3); /* MORE OBVIOUS */
+                top: 15px !important;
+                right: 20px !important;
+                padding: 10px !important;
+                transform: scale(1.1);
             }
         }
         
@@ -897,28 +894,29 @@
             }
         }
 
-        // ULTRA-ROBUST VIDEO VIRTUALIZATION (PREVENTS NETWORK SATURATION)
+        // ULTRA-ROBUST VIDEO VIRTUALIZATION
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 const vid = entry.target;
                 const sourceUrl = vid.getAttribute('data-src');
                 
                 if (entry.isIntersecting) {
-                    // Only set src if it's different or empty to avoid restart flickers
                     if (vid.src !== sourceUrl) {
                         vid.src = sourceUrl;
                         vid.load();
                     }
-                    vid.play().catch(() => {});
+                    // Add a tiny delay to ensure load has started before playing
+                    setTimeout(() => {
+                        vid.play().catch(() => {});
+                    }, 50);
                 } else {
-                    // IMPORTANT: Stop the download and clear the decoder
                     vid.pause();
-                    vid.src = ""; 
+                    vid.removeAttribute('src'); 
                     vid.load();
                 }
             });
         }, { 
-            rootMargin: '0px 1000px 0px 1000px', // Large buffer zone
+            rootMargin: '0px 1000px 0px 1000px',
             threshold: 0.01 
         });
 
