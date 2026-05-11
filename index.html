@@ -718,21 +718,25 @@
         }
         .close-panel:hover { opacity: 1; }
 
-        /* MOBILE OVERRIDES */
-        @media (max-width: 600px) {
-            #main-container { padding: 60px 0; } /* REDUCED MOBILE PADDING */
+        /* MOBILE & TABLET OVERRIDES */
+        @media (max-width: 1024px) {
+            #main-container { 
+                padding: 60px 0; 
+                scroll-snap-type: x mandatory; /* MAGNETIC SCROLLING */
+            }
             #stream { gap: 0; }
             .column { 
                 min-width: 100vw; 
                 height: 100%; 
                 justify-content: center; 
                 align-items: center;
-                gap: 40px; /* REDUCED GAP */
+                gap: 40px; 
                 padding: 60px 20px;
-                scroll-snap-align: center;
+                scroll-snap-align: center; /* SNAP TO CENTER */
             }
             .pulse-card { 
                 width: 90vw !important; 
+                max-width: 600px;
                 height: auto !important; 
                 min-height: 380px !important; 
                 padding: 30px; 
@@ -742,8 +746,10 @@
             .hero-card { 
                 height: 50vh !important; 
                 min-height: 450px !important; 
+                width: 90vw !important;
+                max-width: 500px;
             }
-            #info-toggle { top: 50px; left: 20px; font-size: 0.7em; padding: 5px 10px; } /* CLEAR HUD */
+            #info-toggle { top: 50px; left: 20px; font-size: 0.7em; padding: 5px 10px; } 
             #page-title { 
                 top: auto; 
                 bottom: 50px; 
@@ -1201,8 +1207,8 @@
             }
 
             // 2. Manage Masonry Columns
-            const isMobile = window.innerWidth <= 600;
-            const maxPulsePerColumn = isMobile ? 1 : 2;
+            const isHandheld = window.innerWidth <= 1024;
+            const maxPulsePerColumn = isHandheld ? 1 : 2;
             
             const parts = (data.mood_tag || '').split('|');
             const imageUrl = parts[2] || '';
