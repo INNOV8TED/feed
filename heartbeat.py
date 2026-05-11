@@ -769,29 +769,27 @@ def generate_blueprint(input_image):
         return None
 
 def generate_audio_visualizer(audio_path):
-    """Generates a random 10-second vertical waveform video from an audio file."""
+    """Generates a high-fidelity 'Blue Chromatic' vertical waveform video."""
     try:
         # 1. Get Duration
         cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
         duration = float(subprocess.check_output(cmd).decode().strip())
         
-        if duration < 12:
-            start = 0
-            t = duration
-        else:
-            start = random.uniform(2, max(2, duration - 12))
-            t = 10
+        # Pick 10s or full duration if shorter
+        t = min(10, duration)
+        start = random.uniform(0, max(0, duration - t)) if duration > t else 0
             
         output_file = f"audio_pulse_{int(time.time())}.mp4"
         
         # 2. Generate Waveform Video (Vertical 1080x1920)
-        # Using a cyan neon waveform on dark background
+        # Using Electric Blue waves on an atmospheric dark background
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
             '-filter_complex', 
-            "[0:a]showwaves=s=1080x1920:mode=line:colors=0x00FFB4:draw=full[v]",
+            "[0:a]showwaves=s=1080x1920:mode=line:colors=0x00CCFF:draw=full:scale=log[v]",
             '-map', '[v]', '-map', '0:a',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
+            '-pix_fmt', 'yuv420p', # Max compatibility
             '-c:a', 'aac', '-b:a', '128k', output_file
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
