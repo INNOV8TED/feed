@@ -340,25 +340,39 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except: pass
 
             if workflow:
-                # --- ACTIVE INTENTION CHECK (Stability) ---
-                # Ensure the file is DONE being written to (especially for renders)
+                # --- ACTIVE INTENTION CHECK (Stability & Locking) ---
+                # 1. EXCLUSIVE LOCK CHECK (Windows Render Guard)
+                # If Media Encoder is rendering, it has a write-lock.
+                try:
+                    # Attempt to open the file exclusively for appending
+                    # If this fails, the file is busy (Active Render)
+                    with open(file_path, 'a'):
+                        pass
+                except (IOError, OSError):
+                    # File is locked by Adobe - skip this event
+                    return
+
+                # 2. SIZE STABILITY CHECK
                 try:
                     last_size = -1
                     stable_count = 0
-                    for _ in range(5): # Check for 2.5 seconds
+                    # Renders need a longer stability window
+                    checks = 20 if is_video else 5 
+                    
+                    for _ in range(checks):
                         current_size = os.path.getsize(file_path)
-                        if current_size == last_size and current_size > 0:
+                        # Filter out empty placeholders (less than 1KB)
+                        if current_size == last_size and current_size > 1024:
                             stable_count += 1
                         else:
                             stable_count = 0
                         
-                        if stable_count >= 2: break # Stable for ~1 second
+                        if stable_count >= 3: break # Stable for ~1.5s after initial growth
                         
                         last_size = current_size
                         time.sleep(0.5)
                         
-                    if stable_count < 2:
-                        # File is still being written or is empty (noise)
+                    if stable_count < 3:
                         return
                 except: return
 
