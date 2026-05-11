@@ -19,6 +19,40 @@
             --glow: 0 0 20px rgba(0, 255, 170, 0.2);
         }
 
+        /* TIME OF DAY THEMES */
+        .time-dawn { --accent-color: #ff99cc; --glow: 0 0 25px rgba(255, 153, 204, 0.3); } /* Soft Pink/Cyan */
+        .time-day { --accent-color: #00ffaa; --glow: 0 0 25px rgba(0, 255, 170, 0.3); }   /* Focused Teal */
+        .time-dusk { --accent-color: #ff8800; --glow: 0 0 25px rgba(255, 136, 0, 0.3); }  /* Amber Orange */
+        .time-night { --accent-color: #9d00ff; --glow: 0 0 25px rgba(157, 0, 255, 0.3); } /* Deep Purple */
+        .time-midnight { --accent-color: #00ccff; --glow: 0 0 25px rgba(0, 204, 255, 0.3); } /* Midnight Blue */
+
+        /* MEMORY STATE */
+        .memory-card {
+            opacity: 0.85;
+            filter: saturate(0.7) contrast(1.1);
+            border-style: dashed !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .memory-card .pulse-bg {
+            opacity: 0.25 !important;
+            filter: grayscale(0.5);
+        }
+
+        .memory-badge {
+            position: absolute;
+            top: 20px; left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-family: 'Space Mono';
+            font-size: 0.6em;
+            padding: 4px 10px;
+            letter-spacing: 2px;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 10;
+            backdrop-filter: blur(5px);
+        }
+
         /* THEMES */
         .theme-focused { --accent-color: #00ffaa; --glow: 0 0 20px rgba(0, 255, 170, 0.3); }
         .theme-creative { --accent-color: #00e5ff; --glow: 0 0 20px rgba(0, 229, 255, 0.3); }
@@ -722,6 +756,15 @@
         let pulseInColumn = 0;
         let lastDateString = null;
 
+        function getTimeContext(date) {
+            const hour = date.getHours();
+            if (hour >= 5 && hour < 9) return { class: 'time-dawn', label: 'DAWN PHASE' };
+            if (hour >= 9 && hour < 17) return { class: 'time-day', label: 'WORK DAY' };
+            if (hour >= 17 && hour < 21) return { class: 'time-dusk', label: 'DUSK R&D' };
+            if (hour >= 21 || hour < 1) return { class: 'time-night', label: 'NIGHT OPS' };
+            return { class: 'time-midnight', label: 'DEEP NIGHT' };
+        }
+
         function createPulseCard(data, isInitial = false) {
             const parts = (data.mood_tag || '').split('|');
             const mood = parts[0] || 'focused';
@@ -730,8 +773,13 @@
             const software = (parts[3] || 'Creative Engine').toUpperCase();
             const quote = parts[4] || '';
 
-            const timeStr = new Date(data.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const createdAt = new Date(data.created_at || Date.now());
+            const timeStr = createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const isVideo = imageUrl.toLowerCase().endsWith('.mp4');
+            
+            // Time and Memory Context
+            const timeContext = getTimeContext(createdAt);
+            const isMemory = (Date.now() - createdAt.getTime()) > (24 * 60 * 60 * 1000);
             
             // Determine Media Theme
             let mediaClass = 'media-themed ';
@@ -743,15 +791,17 @@
 
             const isHero = isVideo; 
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
+            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''}`;
+            
             card.innerHTML = `
                 <div class="render-progress-container">
                     <div class="render-progress-bar"></div>
                 </div>
                 <div class="heartbeat-light"></div>
                 ${data.is_milestone ? '<div class="milestone-badge" style="background: #FFD700; color: #000;">Master Render</div>' : ''}
+                ${isMemory ? `<div class="memory-badge">◈ MEMORY // ${createdAt.toLocaleDateString([], {month: 'short', day: 'numeric'})}</div>` : ''}
                 
-                <div class="pulse-bg" style="opacity: ${imageUrl ? 0.7 : 0}; z-index: 1;">
+                <div class="pulse-bg" style="opacity: ${imageUrl ? (isMemory ? 0.3 : 0.7) : 0}; z-index: 1;">
                     ${imageUrl && !imageUrl.toLowerCase().endsWith('.mp4') ? `<img src="${imageUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;">` : ''}
                     ${imageUrl && imageUrl.toLowerCase().endsWith('.mp4') ? `
                         <video id="vid-${data.id}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;">
@@ -805,7 +855,7 @@
                             </div>
                         ` : ''}
                     </div>
-                    <div class="pulse-sub-label">◈ ${subLabel}</div>
+                    <div class="pulse-sub-label">◈ ${timeContext.label} // ${subLabel}</div>
                     <div style="font-size: 0.65em; opacity: 0.3; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; font-family: 'Space Mono';">
                         Engine: ${software}
                     </div>
