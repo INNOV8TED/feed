@@ -151,27 +151,68 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background-color: #030303;
+            background-color: #010101;
             background-image: 
-                radial-gradient(circle at 0% 0%, rgba(0, 255, 170, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(157, 0, 255, 0.08) 0%, transparent 50%),
-                url('https://www.transparenttextures.com/patterns/stardust.png'); /* Subtle grain */
+                radial-gradient(circle at 0% 0%, rgba(0, 255, 170, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(157, 0, 255, 0.1) 0%, transparent 50%);
             color: var(--text-color);
             font-family: 'Inter', sans-serif;
             overflow: hidden;
             display: flex;
             height: 100vh;
-            animation: bg-pulse 20s infinite alternate ease-in-out;
+            position: relative;
         }
 
-        @keyframes bg-pulse {
-            0% { background-position: 0% 0%; }
-            100% { background-position: 10px 10px; }
+        /* ATMOSPHERIC GRID BACKGROUND */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: 
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 80px 80px;
+            z-index: 0;
+            pointer-events: none;
+            opacity: 0.15;
+            animation: grid-drift 100s linear infinite;
+        }
+
+        /* PREMIUM NOISE OVERLAY */
+        body::after {
+            content: "";
+            position: fixed;
+            top: -50%; left: -50%; width: 200%; height: 200%;
+            background: url('https://www.transparenttextures.com/patterns/stardust.png');
+            opacity: 0.04;
+            z-index: 2;
+            pointer-events: none;
+            animation: noise-drift 8s steps(10) infinite;
+        }
+
+        @keyframes noise-drift {
+            0% { transform: translate(0,0); }
+            10% { transform: translate(-1%,-1%); }
+            20% { transform: translate(-2%,1%); }
+            30% { transform: translate(1%,-2%); }
+            40% { transform: translate(-1%,2%); }
+            50% { transform: translate(-2%,-2%); }
+            60% { transform: translate(-1%,1%); }
+            70% { transform: translate(1%,-1%); }
+            80% { transform: translate(2%,1%); }
+            90% { transform: translate(-1%,-1%); }
+            100% { transform: translate(0,0); }
+        }
+
+        @keyframes grid-drift {
+            from { background-position: 0 0; }
+            to { background-position: 1000px 1000px; }
         }
 
         h1, h2, .pulse-label, .intro-title, #page-title {
             font-family: 'Syncopate', sans-serif;
             text-transform: uppercase;
+            letter-spacing: 3px;
         }
 
         /* HUD ELEMENTS */
@@ -237,31 +278,6 @@
             100% { transform: translateY(-100%); }
         }
 
-        /* ATMOSPHERIC HUD BACKGROUND */
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: 
-                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
-            z-index: 0;
-            pointer-events: none;
-            opacity: 0.15;
-            filter: none;
-            animation: grid-drift 60s linear infinite;
-        }
-
-        @keyframes grid-drift {
-            from { background-position: 0 0; }
-            to { background-position: 1000px 1000px; }
-        }
-
-        /* CRT SCANLINE EFFECT REMOVED FOR MAXIMUM CLARITY */
-        body::after {
-            display: none !important;
-        }
 
         /* INTRO SIDEBAR */
         #info-panel {
