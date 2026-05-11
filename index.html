@@ -897,19 +897,27 @@
             }
         }
 
-        // PREDICTIVE VIDEO OBSERVER (FOR BUTTER SMOOTH PLAYBACK)
+        // AGGRESSIVE VIDEO VIRTUALIZATION (FOR INFINITE PERFORMANCE)
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 const vid = entry.target;
                 if (entry.isIntersecting) {
-                    vid.preload = "auto"; // Aggressive preload when nearing viewport
+                    // LOAD ON ENTRY
+                    if (!vid.src) {
+                        const source = vid.getAttribute('data-src');
+                        vid.src = source;
+                        vid.load();
+                    }
                     vid.play().catch(() => {});
                 } else {
+                    // UNLOAD ON EXIT (FREES DECODER & MEMORY)
                     vid.pause();
+                    vid.removeAttribute('src'); 
+                    vid.load();
                 }
             });
         }, { 
-            rootMargin: '0px 1200px 0px 1200px', // PRELOAD 1200px AHEAD
+            rootMargin: '0px 800px 0px 800px', // Buffer zone for pre-loading
             threshold: 0.01 
         });
 
@@ -1011,12 +1019,12 @@
                     ${imageUrl && (imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov')) ? `
                         <div class="video-loader" id="loader-${data.id}"></div>
                         <video id="vid-${data.id}" muted loop playsinline 
-                               preload="${forcePreload ? 'auto' : 'metadata'}"
+                               preload="none"
+                               data-src="${imageUrl}"
                                onwaiting="document.getElementById('loader-${data.id}').style.display = 'block'"
                                onplaying="document.getElementById('loader-${data.id}').style.display = 'none'"
                                ontimeupdate="updateVideoProgress(this, '${data.id}')"
                                style="width: 100%; height: 100%; object-fit: cover; opacity: 1; background: #000;">
-                            <source src="${imageUrl}" type="${imageUrl.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/quicktime'}">
                         </video>
                         <div class="video-progress-container" style="display: block;">
                             <div class="video-progress-bar" id="progress-${data.id}"></div>
