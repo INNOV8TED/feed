@@ -608,18 +608,20 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
 
-            # 3. CHANNEL IDENTIFICATION
+            # 3. CHANNEL IDENTIFICATION (Hierarchical Brand Check)
             channel_id = "INNOV8"
             buffer_profile = BUFFER_PROFILE_ID_MAIN
-            path_upper = file_path.upper()
-            proj_upper = project_name.upper()
+            path_parts = [p.upper() for p in file_path.split(os.sep)]
             
-            if "LANNA" in path_upper or "LANNA" in proj_upper:
+            if "LANNA" in path_parts:
                 channel_id = "LANNA"
                 buffer_profile = BUFFER_PROFILE_ID_LANNA
-            elif any(x in path_upper for x in ["BLUE CHROMATIC", "TRIANGLE", "DEER"]) or any(x in proj_upper for x in ["BLUE", "TRIANGLE", "DEER"]):
+            elif "BLUE" in path_parts or "BLUE CHROMATIC" in path_parts:
                 channel_id = "BLUE"
                 buffer_profile = BUFFER_PROFILE_ID_BLUE
+            elif "INNOV8" in path_parts:
+                channel_id = "INNOV8"
+                buffer_profile = BUFFER_PROFILE_ID_MAIN
 
             # 4. DISPATCH FULL PULSE TO SUPABASE (CHANNEL-AWARE)
             is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]"])
