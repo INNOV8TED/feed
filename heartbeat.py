@@ -30,7 +30,8 @@ WATCH_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
-    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_"
+    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_",
+    ".pek", ".cfa", ".ims", ".re", "_AME", ".crdownload", ".part"
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 5.0 # Increased responsiveness
@@ -338,6 +339,28 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except: pass
 
             if workflow:
+                # --- ACTIVE INTENTION CHECK (Stability) ---
+                # Ensure the file is DONE being written to (especially for renders)
+                try:
+                    last_size = -1
+                    stable_count = 0
+                    for _ in range(5): # Check for 2.5 seconds
+                        current_size = os.path.getsize(file_path)
+                        if current_size == last_size and current_size > 0:
+                            stable_count += 1
+                        else:
+                            stable_count = 0
+                        
+                        if stable_count >= 2: break # Stable for ~1 second
+                        
+                        last_size = current_size
+                        time.sleep(0.5)
+                        
+                    if stable_count < 2:
+                        # File is still being written or is empty (noise)
+                        return
+                except: return
+
                 project_name = get_project_name(file_path)
                 
                 # --- INTENTION CHECK (Freshness) ---
