@@ -44,6 +44,7 @@ last_sent_cache = {}
 # Persistence Cache
 CACHE_FILE = "studio_cache.json"
 last_size_cache = {}
+fingerprint_cache = {} # Tracks (size, ctime) to prevent renames from pulsing
 
 def load_cache():
     global last_size_cache
@@ -446,7 +447,28 @@ class HeartbeatHandler(FileSystemEventHandler):
             if current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD:
                 return
             
-            # 1. FILE-PATH COOLDOWN (Echo-Zero Lock)
+            # 1. DIGITAL FINGERPRINT CHECK (Rename/Move Guard)
+            # Prevent re-pulsing if the file was just renamed or moved
+            try:
+                f_size = os.path.getsize(file_path)
+                f_ctime = os.path.getctime(file_path)
+                fingerprint = f"{f_size}_{f_ctime}"
+                
+                if fingerprint in fingerprint_cache:
+                    # We've seen this exact file content/state before
+                    return
+                
+                # Store fingerprint
+                fingerprint_cache[fingerprint] = current_time
+                
+                # Periodic cleanup of old fingerprints (older than 24h)
+                if len(fingerprint_cache) > 500:
+                    cutoff = current_time - 86400
+                    expired = [k for k, v in fingerprint_cache.items() if v < cutoff]
+                    for k in expired: del fingerprint_cache[k]
+            except: pass
+
+            # 2. FILE-PATH COOLDOWN (Echo-Zero Lock)
             # Use the absolute path as the key to prevent echos for the same file
             cooldown_key = file_path
             
