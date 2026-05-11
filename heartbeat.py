@@ -340,11 +340,14 @@ class HeartbeatHandler(FileSystemEventHandler):
                     freshness = time.time() - max(mtime, ctime)
                     
                     # ASSET LENIENCY: Allow images/videos even if old, unless they are EXTREMELY old (1 week)
-                    # Or if they are in the "RANDOM" folder
+                    # OR if they are in the "RANDOM" or "MEMORIES" or "SOCIAL" folder (unlimited age)
                     is_asset = ext in [".png", ".jpg", ".jpeg", ".mp4", ".mov", ".wav", ".mp3"]
-                    is_random = "RANDOM" in file_path.upper()
+                    is_special_folder = any(x in file_path.upper() for x in ["RANDOM", "MEMORIES", "SOCIAL"])
                     
-                    threshold = 604800.0 if (is_asset or is_random) else 120.0 
+                    if is_special_folder:
+                        threshold = 315360000.0 # 10 years (effectively unlimited)
+                    else:
+                        threshold = 604800.0 if is_asset else 120.0 
                     
                     if freshness > threshold:
                         log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(freshness)}s).")
