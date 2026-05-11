@@ -721,10 +721,10 @@
         /* MOBILE & TABLET OVERRIDES */
         @media (max-width: 1024px) {
             #main-container { 
-                padding: 60px 0; 
-                scroll-snap-type: x mandatory; /* MAGNETIC SCROLLING */
+                padding: 100px 0; 
+                scroll-snap-type: x mandatory; 
             }
-            #stream { gap: 0; }
+            #stream { gap: 0; padding: 0 20px; }
             .column { 
                 min-width: 100vw; 
                 height: 100%; 
@@ -732,40 +732,40 @@
                 align-items: center;
                 gap: 40px; 
                 padding: 60px 20px;
-                scroll-snap-align: center; /* SNAP TO CENTER */
-                scroll-snap-stop: always; /* PREVENT SKIPPING SLIDES */
+                scroll-snap-align: center; 
+                scroll-snap-stop: always;
             }
             .pulse-card { 
                 width: 90vw !important; 
-                max-width: 600px;
+                max-width: 500px;
                 height: auto !important; 
-                min-height: 380px !important; 
-                padding: 30px; 
+                min-height: 350px !important; 
+                padding: 25px; 
                 margin: 0 auto;
                 flex-shrink: 0;
             }
             .hero-card { 
-                height: 50vh !important; 
-                min-height: 450px !important; 
+                height: 45vh !important; 
+                min-height: 400px !important; 
                 width: 90vw !important;
-                max-width: 500px;
+                max-width: 450px;
             }
-            #info-toggle { top: 50px; left: 20px; font-size: 0.7em; padding: 5px 10px; } 
-            #page-title { 
-                top: auto; 
-                bottom: 50px; 
-                left: 50%;
-                transform: translateX(-50%);
-                font-size: 0.8em; 
-                opacity: 0.5;
-            }
-            #nexus-link { bottom: 60px; left: 20px; width: 80px; }
             
+            /* DECLUTTERING */
+            .data-stream, #page-title, #system-status-msg, .hud-tag:nth-child(2) { 
+                display: none !important; 
+            }
+            
+            #info-toggle { top: 60px; left: 20px; font-size: 0.7em; padding: 5px 10px; } 
+            #nexus-link { bottom: 60px; left: 20px; width: 60px; }
+            
+            .hud-bar { height: 35px; font-size: 0.6em; padding: 0 20px; }
+
             .audio-toggle {
                 top: 15px !important;
                 right: 20px !important;
-                padding: 10px !important;
-                transform: scale(1.1);
+                padding: 8px !important;
+                transform: scale(1);
             }
         }
         
