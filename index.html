@@ -53,11 +53,10 @@
             backdrop-filter: blur(5px);
         }
 
-        /* CINEMATIC SOCIAL MODE (MEMORIES) */
         .cinematic-mode .pulse-header,
-        .cinematic-mode .pulse-sub-label,
+        /* .cinematic-mode .pulse-sub-label, // RESTORED FOR SOCIAL CONTEXT */
         .cinematic-mode .daily-spark,
-        /* .cinematic-mode .pulse-label, // SHOW TITLE IN CINEMATIC MODE */
+        /* .cinematic-mode .pulse-label, // SHOW TITLE */
         .cinematic-mode .sprite-wrapper,
         .cinematic-mode .milestone-badge,
         .cinematic-mode .render-progress-container,
@@ -81,9 +80,27 @@
         }
 
         .cinematic-mode .card-logo {
+            opacity: 0.9;
+            bottom: 50px; right: 50px; /* MOVED TO BOTTOM RIGHT */
+            left: auto;
+            width: 180px;
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+        }
+
+        /* DISTINCT SOCIAL THEME: CYBER GOLD */
+        .cinematic-mode {
+            --accent-color: #FFD700; /* GOLD */
+            border-color: rgba(255, 215, 0, 0.4) !important;
+            box-shadow: 0 0 40px rgba(255, 215, 0, 0.1) !important;
+        }
+        .cinematic-mode .pulse-label {
+            color: #FFD700;
+            text-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+        }
+        .cinematic-mode .pulse-sub-label {
+            color: #FFD700;
             opacity: 0.8;
-            bottom: 50px; left: 50px;
-            width: 160px;
+            font-weight: 700;
         }
 
         /* VIDEO UX */
