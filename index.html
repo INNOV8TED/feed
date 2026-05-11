@@ -549,6 +549,14 @@
             color: var(--media-accent) !important;
         }
 
+        .pulse-card.media-themed .pulse-label {
+            background: linear-gradient(to right, #ffffff 40%, var(--media-accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+            display: inline-block; /* Ensure clip works correctly */
+        }
+
         .pulse-card.media-themed .render-progress-bar {
             background: var(--media-accent);
             box-shadow: 0 0 10px var(--media-accent);
