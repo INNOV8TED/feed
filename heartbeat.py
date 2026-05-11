@@ -692,11 +692,11 @@ def extract_random_clip(video_path):
         output_file = f"clip_{int(time.time())}.mp4"
         
         # 3. Extract 10s clip with vertical 1080x1920 center-crop
-        # Using libx264 for compatibility
+        # Using libx264 with optimized settings for smooth web playback
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', '10', '-i', video_path,
             '-vf', "scale=w=-1:h=1920,crop=1080:1920",
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', 
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', 
             '-c:a', 'aac', '-b:a', '128k', output_file
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
