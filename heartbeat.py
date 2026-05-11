@@ -461,7 +461,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             # Only pulse videos/audio if they are in an output-related folder
             # This prevents stock assets, footage, and source files from triggering pulses.
             path_upper = file_path.upper()
-            output_keywords = ["EXPORTS", "MASTERS", "FINAL", "SOCIAL", "MEMORIES", "OUTPUT", "RENDER", "DELIVERABLES"]
+            output_keywords = ["EXPORTS", "MASTERS", "FINAL", "SOCIAL", "MEMORIES", "OUTPUT", "RENDER", "DELIVERABLES", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]"]
             asset_keywords = ["ASSETS", "FOOTAGE", "STOCK", "SOURCE", "RAW", "INGEST", "MATERIAL"]
             
             if is_video or is_audio:
@@ -474,7 +474,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
                 # ROOT GUARD: If the file is too shallow in the project (likely an asset drag-and-drop), skip it.
                 rel_path = os.path.relpath(file_path, WATCH_PATH)
-                if len(rel_path.split(os.sep)) < 3 and not any(k in path_upper for k in ["SOCIAL", "MEMORIES"]):
+                is_explicit_pulse = "[PULSE]" in path_upper
+                if len(rel_path.split(os.sep)) < 3 and not any(k in path_upper for k in ["SOCIAL", "MEMORIES", "ARCHIVE", "BEST_OF", "HIGHLIGHTS"]) and not is_explicit_pulse:
                     # Likely root-level asset
                     return
 
@@ -608,7 +609,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
 
             # 3. DISPATCH FULL PULSE TO SUPABASE
-            status_text = "Social active." if "MEMORIES" in path_upper or "SOCIAL" in path_upper else "Neural link active."
+            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]"])
+            status_text = "Social active." if is_social_folder else "Neural link active."
             data = {
                 "project_name": project_name,
                 "action_label": action_label,

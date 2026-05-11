@@ -1008,6 +1008,9 @@
             const isHero = isVideo; 
             const isSocial = (data.project_name || '').toUpperCase().includes('SOCIAL') || 
                              (data.project_name || '').toUpperCase().includes('MEMORIES') || 
+                             (data.project_name || '').toUpperCase().includes('ARCHIVE') || 
+                             (data.project_name || '').toUpperCase().includes('HIGHLIGHTS') || 
+                             (data.project_name || '').toUpperCase().includes('[PULSE]') || 
                              (data.action_label || '').includes('◈');
 
             const card = document.createElement('div');
