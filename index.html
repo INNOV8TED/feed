@@ -104,6 +104,96 @@
             height: 100vh;
         }
 
+        /* HUD ELEMENTS */
+        .hud-bar {
+            position: fixed;
+            left: 0; width: 100%;
+            padding: 10px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7em;
+            color: var(--accent-color);
+            letter-spacing: 2px;
+            z-index: 2500;
+            pointer-events: none;
+            background: linear-gradient(to right, rgba(0,0,0,0.4), transparent, rgba(0,0,0,0.4));
+            backdrop-filter: blur(5px);
+        }
+
+        .hud-top { top: 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .hud-bottom { bottom: 0; border-top: 1px solid rgba(255,255,255,0.05); }
+
+        .hud-tag { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+        .hud-tag span { opacity: 0.5; }
+        .hud-value { font-weight: 700; text-shadow: 0 0 10px var(--accent-color); }
+
+        /* MASTER AUDIO TOGGLE */
+        #master-audio-hud {
+            position: fixed;
+            bottom: 40px; right: 40px;
+            z-index: 2600;
+            background: rgba(10, 10, 10, 0.8);
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(0, 255, 170, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #master-audio-hud:hover {
+            background: var(--accent-color);
+            color: #000;
+            box-shadow: 0 0 25px var(--accent-color);
+        }
+
+        /* SONAR ANIMATION */
+        @keyframes sonar-pulse {
+            0% { box-shadow: inset 0 0 0px var(--accent-color); opacity: 0.1; }
+            50% { opacity: 0.3; }
+            100% { box-shadow: inset 0 0 200px var(--accent-color); opacity: 0; }
+        }
+
+        .sonar-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            animation: sonar-pulse 8s infinite cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .data-stream {
+            position: fixed;
+            top: 60px; right: 40px;
+            width: 150px;
+            height: 200px;
+            overflow: hidden;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.5em;
+            color: var(--accent-color);
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 2400;
+            text-align: right;
+            line-height: 1.5;
+        }
+
+        .data-line {
+            white-space: nowrap;
+            animation: scroll-up 10s linear infinite;
+        }
+
+        @keyframes scroll-up {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+
         /* ATMOSPHERIC HUD BACKGROUND */
         body::before {
             content: "";
@@ -671,6 +761,53 @@
     </style>
 </head>
 <body>
+    <div class="sonar-overlay"></div>
+
+    <div class="data-stream">
+        <div class="data-line">SYNCING_NEURAL_LINK...</div>
+        <div class="data-line">FETCHING_PULSE_DATA...</div>
+        <div class="data-line">DECODING_STUDIO_SNAPSHOT...</div>
+        <div class="data-line">MAPPING_PIXEL_SPRITES...</div>
+        <div class="data-line">BUFFER_QUOTA_CHECK...</div>
+        <div class="data-line">LANNA_LABS_ONLINE...</div>
+        <div class="data-line">ENCRYPTING_STREAMS...</div>
+        <div class="data-line">BREADCRUMB_TRAIL_ACTIVE...</div>
+        <div class="data-line">SYNCING_NEURAL_LINK...</div>
+        <div class="data-line">FETCHING_PULSE_DATA...</div>
+        <div class="data-line">DECODING_STUDIO_SNAPSHOT...</div>
+        <div class="data-line">MAPPING_PIXEL_SPRITES...</div>
+    </div>
+
+    <div class="hud-bar hud-top">
+        <div class="hud-tag">
+            <span>LINK_STATUS:</span>
+            <div class="hud-value" id="hud-link-status">ACTIVE</div>
+        </div>
+        <div class="hud-tag">
+            <span>NEURAL_SYNC:</span>
+            <div class="hud-value">OPTIMAL</div>
+        </div>
+        <div class="hud-tag">
+            <span>CURRENT_PHASE:</span>
+            <div class="hud-value" id="hud-phase">NIGHT_OPS</div>
+        </div>
+    </div>
+
+    <div class="hud-bar hud-bottom">
+        <div class="hud-tag">
+            <span>LOC:</span>
+            <div class="hud-value">18.78N, 98.98E // LANNA, TH</div>
+        </div>
+        <div class="hud-tag" id="hud-sync-readout">
+            <span>LAST_PULSE:</span>
+            <div class="hud-value" id="hud-last-sync">INIT...</div>
+        </div>
+    </div>
+
+    <div id="master-audio-hud" onclick="toggleMasterMute()" title="Master Audio Toggle">
+        <span class="material-icons" id="master-audio-icon">volume_up</span>
+    </div>
+
     <div id="page-title">IN-NO-V8 Work Feed</div>
     <div id="info-toggle" onclick="togglePanel()" title="Decode the Studio Pulse: Learn how this feed works.">
         <div class="pulse-dot"></div>
@@ -736,6 +873,34 @@
             
             osc.start();
             osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        // MASTER AUDIO CONTROL
+        let isMasterMuted = false;
+        function toggleMasterMute() {
+            isMasterMuted = !isMasterMuted;
+            const icon = document.getElementById('master-audio-icon');
+            const btn = document.getElementById('master-audio-hud');
+            
+            // Toggle all active videos
+            document.querySelectorAll('video').forEach(vid => {
+                vid.muted = isMasterMuted;
+            });
+
+            // Update individual buttons for consistency
+            document.querySelectorAll('.audio-toggle .material-icons').forEach(i => {
+                i.innerText = isMasterMuted ? 'volume_off' : 'volume_up';
+            });
+
+            if (isMasterMuted) {
+                icon.innerText = 'volume_off';
+                btn.style.borderColor = 'rgba(255,255,255,0.2)';
+                btn.style.color = 'rgba(255,255,255,0.2)';
+            } else {
+                icon.innerText = 'volume_up';
+                btn.style.borderColor = 'var(--accent-color)';
+                btn.style.color = 'var(--accent-color)';
+            }
         }
 
         // MOUSEWHEEL HORIZONTAL SCROLL
@@ -950,6 +1115,9 @@
                     streamContainer.prepend(col);
                 }
                 statusMsg.style.display = 'block';
+                document.getElementById('hud-link-status').innerText = 'STANDBY';
+                document.getElementById('hud-link-status').style.color = '#9370DB';
+                document.body.classList.add('status-sleeping');
                 if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: STANDBY ]<br>[ SYNC_LEVEL: LOW ]';
             } else {
                 // STUDIO ACTIVE
@@ -957,6 +1125,9 @@
                 if (standbyCol) standbyCol.remove();
                 
                 statusMsg.style.display = 'none';
+                document.getElementById('hud-link-status').innerText = 'ACTIVE';
+                document.getElementById('hud-link-status').style.color = 'var(--accent-color)';
+                document.body.classList.remove('status-sleeping');
                 if (statusIndicator) statusIndicator.innerHTML = '[ LINK_STATUS: ACTIVE ]<br>[ SYNC_LEVEL: OPTIMAL ]';
             }
         }
@@ -965,8 +1136,14 @@
 
         function updateUI(data, isInitial = false) {
             if (!data.id) return;
-            lastPulseTime = new Date(data.created_at || Date.now()).getTime();
+            const pulseTime = new Date(data.created_at || Date.now());
+            lastPulseTime = pulseTime.getTime();
             
+            // Update HUD
+            document.getElementById('hud-last-sync').innerText = pulseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timeContext = getTimeContext(pulseTime);
+            document.getElementById('hud-phase').innerText = timeContext.label;
+
             // IF CARD ALREADY EXISTS...
             const existingCard = document.querySelector(`[data-pulse-id="${data.id}"]`);
             if (existingCard) {
