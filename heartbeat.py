@@ -13,6 +13,7 @@ from supabase import create_client
 import datetime
 from dotenv import load_dotenv
 import sys
+from openai import OpenAI
 
 # Load environment variables from .env file
 load_dotenv()
@@ -23,7 +24,11 @@ KEY = os.environ.get("SUPABASE_KEY")
 BUFFER_TOKEN = os.environ.get("BUFFER_ACCESS_TOKEN")
 BUFFER_PROFILE_ID_MAIN = os.environ.get("BUFFER_PROFILE_ID")
 BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
-BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE") # Reserved for future use
+BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# Initialize OpenAI Client
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # DYNAMIC WATCH PATH: Monitor the parent of the current script location
 WATCH_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -407,9 +412,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                     current_size = os.path.getsize(file_path)
                     last_size = last_size_cache.get(file_path)
                     
-                    # If it's a project file (not a render) and size hasn't changed, ignore it.
+                    # If it's a project file (not a render/asset) and size hasn't changed, ignore it.
                     # This prevents "Open" events from triggering pulses.
-                    if ext != ".mp4" and last_size is not None and current_size == last_size:
+                    is_media = ext in [".mp4", ".mov", ".mp3", ".wav", ".jpg", ".png"]
+                    is_social = any(k in file_path.upper() for k in ["SOCIAL", "MEMORIES", "[PULSE]", "ARCHIVE"])
+                    
+                    if not is_media and not is_social and last_size is not None and current_size == last_size:
                         log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: Size unchanged ({current_size} bytes).")
                         return
                     
@@ -769,30 +777,62 @@ def generate_blueprint(input_image):
         return None
 
 def generate_audio_visualizer(audio_path):
-    """Generates a high-fidelity 'Blue Chromatic' vertical waveform video."""
+    """Generates an AI-powered 'Blue Chromatic' lyric video with Vector Scope visuals."""
     try:
         # 1. Get Duration
         cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
         duration = float(subprocess.check_output(cmd).decode().strip())
         
-        # Pick 10s or full duration if shorter
-        t = min(10, duration)
-        start = random.uniform(0, max(0, duration - t)) if duration > t else 0
+        t = min(15, duration)
+        start = 0 # For lyrics, we usually want the start
             
         output_file = f"audio_pulse_{int(time.time())}.mp4"
+        srt_file = f"lyrics_{int(time.time())}.srt"
         
-        # 2. Generate Waveform Video (Vertical 1080x1920)
-        # Using Electric Blue waves on an atmospheric dark background
+        # 2. AI TRANSCRIPTION (OpenAI Whisper)
+        lyrics_text = ""
+        if openai_client:
+            try:
+                log_msg(f">>> [AI] Transcribing {os.path.basename(audio_path)} via Whisper...")
+                with open(audio_path, "rb") as audio:
+                    # Get transcription in SRT format for burned-in subtitles
+                    transcript = openai_client.audio.transcriptions.create(
+                        model="whisper-1", 
+                        file=audio, 
+                        response_format="srt"
+                    )
+                    with open(srt_file, "w", encoding="utf-8") as f:
+                        f.write(transcript)
+            except Exception as ai_err:
+                log_msg(f"[AI ERROR] {ai_err}")
+        
+        # 3. Generate Vector Scope Video (Vertical 1080x1920)
+        # Filters: Lissajous Vector Scope + Burned-in Subtitles
+        # Note: Subtitles filter requires escaping backslashes on Windows
+        escaped_srt = srt_file.replace("\\", "/").replace(":", "\\:")
+        
+        filter_complex = (
+            f"[0:a]avectorscope=s=1080x1920:m=lissajous:rc=0:gc=204:bc=255:rf=1:gf=1:bf=1[v];"
+        )
+        
+        # If we have lyrics, burn them in
+        if os.path.exists(srt_file):
+            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='Alignment=2,FontSize=24,OutlineColour=&H80000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=120'[v]"
+        
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
-            '-filter_complex', 
-            "[0:a]showwaves=s=1080x1920:mode=line:colors=0x00CCFF:draw=full:scale=log[v]",
+            '-filter_complex', filter_complex,
             '-map', '[v]', '-map', '0:a',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
-            '-pix_fmt', 'yuv420p', # Max compatibility
+            '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '128k', output_file
         ]
+        
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Cleanup temp srt
+        if os.path.exists(srt_file): os.remove(srt_file)
+        
         return output_file
     except Exception as e:
         log_msg(f"[AUDIO VIS ERROR] {e}")
