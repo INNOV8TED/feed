@@ -871,11 +871,11 @@ def generate_audio_visualizer(audio_path):
         
         # If we have lyrics, burn them in with much better styling
         if has_lyrics and os.path.exists(srt_file):
-            # Premium Vertical Layout Styling: Bold font, semi-transparent box, bottom-center alignment
-            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=2,FontSize=64,OutlineColour=&H40000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=250'[v]"
+            # Minimalist Vertical Layout: Smaller font, subtle outline, positioned between UI elements
+            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=2,FontSize=28,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=450'[v]"
         else:
             # Add a high-visibility labels for instrumental tracks
-            filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontname='Arial Black':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
+            filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontname='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
         
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
