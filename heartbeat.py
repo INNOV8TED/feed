@@ -15,8 +15,9 @@ from dotenv import load_dotenv
 import sys
 from openai import OpenAI
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables with absolute path
+base_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(base_dir, ".env"))
 
 # --- CONFIGURATION ---
 URL = os.environ.get("SUPABASE_URL")
@@ -27,16 +28,21 @@ BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
 BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# Initialize OpenAI Client
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+# Initialize OpenAI Client (Deferred until logging is ready)
+openai_client = None
+
+# --- GLOBAL PATHS ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(BASE_DIR, "heartbeat.log")
+LOCK_PATH = os.path.join(BASE_DIR, "heartbeat.lock")
 
 # DYNAMIC WATCH PATH: Monitor the parent of the current script location
-WATCH_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save"]
+WATCH_PATH = os.path.dirname(BASE_DIR)
+IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN"]
 IGNORE_FILES = [
-    "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg",
-    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_",
-    ".pek", ".cfa", ".ims", ".re", "_AME", ".crdownload", ".part"
+    "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg", "last_log.txt", "log_tail_v2.txt",
+    ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_", "lyrics_",
+    ".pek", ".cfa", ".ims", ".re", "_AME", ".crdownload", ".part", ".log", ".prmdc"
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 5.0 # Increased responsiveness
@@ -77,13 +83,12 @@ pending_timers = {}
 
 # --- SINGLETON LOCK ---
 import msvcrt
-LOCK_FILE = "heartbeat.lock"
 lock_file_handle = None
 
 def get_lock():
-    global lock_file_handle
     try:
-        lock_file_handle = open(LOCK_FILE, "w")
+        global lock_file_handle
+        lock_file_handle = open(LOCK_PATH, "w")
         msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
         lock_file_handle.write(str(os.getpid()))
         lock_file_handle.flush()
@@ -92,7 +97,8 @@ def get_lock():
         return False
 
 if not get_lock():
-    print("Another instance of heartbeat.py is already running. Exiting.")
+    # Only print to console as log might not be ready
+    print(f"Another instance of heartbeat.py is already running. (Lock: {LOCK_PATH})")
     exit(0)
 
 if not URL or not KEY:
@@ -273,39 +279,61 @@ def get_supabase_client():
 supabase = get_supabase_client()
 
 def log_msg(msg):
-    """Robust logging that works even in background mode and handles emojis."""
+    """Robust logging with global absolute paths."""
     full_msg = f"[{time.ctime()}] {msg}"
-    # Safe print for Windows console
+    
     try:
         print(full_msg.encode('ascii', 'ignore').decode('ascii'), flush=True)
-    except:
-        pass
+    except: pass
         
     try:
-        with open("heartbeat.log", "a", encoding='utf-8') as f:
+        with open(LOG_PATH, "a", encoding='utf-8') as f:
             f.write(full_msg + "\n")
             f.flush()
-            os.fsync(f.fileno()) # Force write to disk
+            os.fsync(f.fileno())
     except: pass
+
+# --- AI ENGINE INITIALIZATION ---
+if OPENAI_API_KEY:
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+        log_msg("◈ [AI SYSTEM] OpenAI Engine Initialized.")
+    except Exception as e:
+        log_msg(f"◈ [AI SYSTEM ERROR] Initialization failed: {e}")
+else:
+    log_msg("◈ [AI SYSTEM] Warning: OPENAI_API_KEY not found in .env")
 
 class HeartbeatHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if event.is_directory: return
         path = event.src_path.lower()
-        # IRON SEAL: Immediate suppression of internal system noise
-        if any(f in path for f in IGNORE_FILES + [".git"]):
+        basename = os.path.basename(path)
+        
+        # IRON SEAL: Global Ignore Checks
+        if any(folder.lower() in path for folder in IGNORE_FOLDERS): return
+        if any(ign.lower() in basename for ign in IGNORE_FILES): return
+        
+        ext = os.path.splitext(path)[1].lower().strip()
+        if ext in IGNORE_FILES or ".git" in path:
             return
         
-        log_msg(f"[WATCHER] Change Detected: {os.path.basename(event.src_path)}")
+        log_msg(f"[WATCHER] Change Detected: {basename}")
         self.process_event(event)
         
     def on_created(self, event):
         if event.is_directory: return
         path = event.src_path.lower()
-        if any(f in path for f in ["heartbeat.log", "heartbeat.py", "heartbeat.lock", "test_sync.py", "temp.jpg", ".git"]):
+        basename = os.path.basename(path)
+
+        # IRON SEAL: Global Ignore Checks
+        if any(folder.lower() in path for folder in IGNORE_FOLDERS): return
+        if any(ign.lower() in basename for ign in IGNORE_FILES): return
+
+        ext = os.path.splitext(path)[1].lower().strip()
+        if ext in IGNORE_FILES or ".git" in path:
             return
         
-        log_msg(f"[WATCHER] Created: {os.path.basename(event.src_path)}")
+        log_msg(f"[WATCHER] Created: {basename}")
         self.process_event(event)
 
     def process_event(self, event):
@@ -314,11 +342,12 @@ class HeartbeatHandler(FileSystemEventHandler):
             ext = os.path.splitext(file_path)[1].lower().strip()
                 
             # DEEP DEBUG
-            log_msg(f"[DEBUG] Ext Seen: '{ext}' | Length: {len(ext)}")
+            log_msg(f"[DEBUG] Ext Seen: '{ext}' | Map Type: {type(WORKFLOW_MAP)}")
 
             # FLEXIBLE MATCHING (Including Premiere Temp patterns)
             workflow = None
             for key in WORKFLOW_MAP:
+                log_msg(f"◈ [DEBUG] Testing Key: '{key}' against '{ext}'")
                 if ext.startswith(key):
                     # Create a specific workflow instance with a random label
                     base_workflow = WORKFLOW_MAP[key]
@@ -329,6 +358,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                         "category": category
                     }
                     break
+            log_msg(f"◈ [DEBUG] Workflow Found: {workflow is not None} (Category: {workflow.get('category') if workflow else 'None'})")
             
             # Premiere specific temp handling (Handles files with no extension during save)
             if not workflow and len(ext) == 0:
@@ -354,11 +384,15 @@ class HeartbeatHandler(FileSystemEventHandler):
                     with open(file_path, 'a'):
                         pass
                 except (IOError, OSError):
-                    # File is locked by Adobe - skip this event
+                    # File is locked - skip this event
+                    log_msg(f"◈ [WATCHER] Busy: {os.path.basename(file_path)} (Locked by another process)")
                     return
 
                 # 2. SIZE STABILITY CHECK
                 try:
+                    is_video = ext in [".mp4", ".mov"]
+                    is_audio = ext in [".mp3", ".wav"]
+                    
                     last_size = -1
                     stable_count = 0
                     # Renders need a longer stability window
@@ -366,6 +400,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                     
                     for _ in range(checks):
                         current_size = os.path.getsize(file_path)
+                        log_msg(f"◈ [DEBUG] {os.path.basename(file_path)} Size: {current_size} | Count: {stable_count}")
                         # Filter out empty placeholders (less than 1KB)
                         if current_size == last_size and current_size > 1024:
                             stable_count += 1
@@ -378,6 +413,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                         time.sleep(0.5)
                         
                     if stable_count < 3:
+                        log_msg(f"◈ [WATCHER] Unstable: {os.path.basename(file_path)} (Count: {stable_count})")
                         return
                 except: return
 
@@ -449,8 +485,10 @@ class HeartbeatHandler(FileSystemEventHandler):
                     finished = [k for k, t in pending_timers.items() if not t.is_alive()]
                     for k in finished: del pending_timers[k]
 
-        except Exception as e:
-            log_msg(f"[PROCESS ERROR] {e}")
+        except BaseException as e:
+            import traceback
+            err_msg = traceback.format_exc()
+            log_msg(f"◈ [CRITICAL PROCESS ERROR] {type(e).__name__}: {e}\n{err_msg}")
 
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
@@ -473,11 +511,16 @@ class HeartbeatHandler(FileSystemEventHandler):
             asset_keywords = ["ASSETS", "FOOTAGE", "STOCK", "SOURCE", "RAW", "INGEST", "MATERIAL"]
             
             if is_video or is_audio:
-                is_in_output = any(k in path_upper for k in output_keywords)
-                is_in_asset = any(k in path_upper for k in asset_keywords) or any(k in path_upper for k in ["IMPORT", "USE", "素材"])
+                rel_path_upper = os.path.relpath(file_path, WATCH_PATH).upper()
+                log_msg(f"◈ [DEBUG] Checking Pulse: {rel_path_upper}")
+                is_in_output = any(k in rel_path_upper for k in output_keywords)
+                is_in_asset = any(k in rel_path_upper for k in asset_keywords) or any(k in rel_path_upper for k in ["/IMPORT", "/USE", "\\IMPORT", "\\USE"])
                 
-                # STRIKE TEAM: If it's not in an explicit output folder, or it's in an asset folder, KILL IT.
-                if is_in_asset or not is_in_output:
+                # STRIKE TEAM: Allow root-level media, or anything in an explicit output folder.
+                # But KILL anything in an asset folder.
+                is_root = os.path.dirname(file_path) == WATCH_PATH
+                if is_in_asset: return
+                if not is_in_output and not is_root:
                     return
                 
                 # ROOT GUARD: If the file is too shallow in the project (likely an asset drag-and-drop), skip it.
@@ -781,57 +824,75 @@ def generate_audio_visualizer(audio_path):
     try:
         # 1. Get Duration
         cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
-        duration = float(subprocess.check_output(cmd).decode().strip())
-        
-        t = min(15, duration)
-        start = 0 # For lyrics, we usually want the start
+        try:
+            duration = float(subprocess.check_output(cmd).decode().strip())
+        except:
+            duration = 30.0 # Fallback
             
-        output_file = f"audio_pulse_{int(time.time())}.mp4"
-        srt_file = f"lyrics_{int(time.time())}.srt"
+        t = min(25, duration) # Increased to 25s for better music feel
+        start = 0 
+            
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        ts = int(time.time())
+        output_file = os.path.join(base_dir, f"audio_pulse_{ts}.mp4")
+        srt_file = os.path.join(base_dir, f"lyrics_{ts}.srt")
         
         # 2. AI TRANSCRIPTION (OpenAI Whisper)
-        lyrics_text = ""
+        has_lyrics = False
         if openai_client:
             try:
                 log_msg(f">>> [AI] Transcribing {os.path.basename(audio_path)} via Whisper...")
+                # Safety check: if file > 24MB, we might need to compress or slice it
+                # For now, just try
                 with open(audio_path, "rb") as audio:
-                    # Get transcription in SRT format for burned-in subtitles
                     transcript = openai_client.audio.transcriptions.create(
                         model="whisper-1", 
                         file=audio, 
                         response_format="srt"
                     )
-                    with open(srt_file, "w", encoding="utf-8") as f:
-                        f.write(transcript)
+                    if transcript and len(transcript.strip()) > 50: # Basic "has content" check
+                        with open(srt_file, "w", encoding="utf-8") as f:
+                            f.write(transcript)
+                        has_lyrics = True
+                        log_msg(f">>> [AI] Transcription Complete. Burned to {os.path.basename(srt_file)}")
+                    else:
+                        log_msg(">>> [AI] Transcription returned empty/short result. Likely instrumental.")
             except Exception as ai_err:
                 log_msg(f"[AI ERROR] {ai_err}")
         
         # 3. Generate Vector Scope Video (Vertical 1080x1920)
-        # Filters: Lissajous Vector Scope + Burned-in Subtitles
-        # Note: Subtitles filter requires escaping backslashes on Windows
         escaped_srt = srt_file.replace("\\", "/").replace(":", "\\:")
         
+        # Visual Parameters
+        # avectorscope Cyan-ish color: gc=204:bc=255
         filter_complex = (
-            f"[0:a]avectorscope=s=1080x1920:m=lissajous:rc=0:gc=204:bc=255:rf=1:gf=1:bf=1[v];"
+            f"[0:a]avectorscope=s=1080x1920:m=lissajous:rc=0:gc=255:bc=255:rf=1:gf=1:bf=1[v];"
         )
         
-        # If we have lyrics, burn them in
-        if os.path.exists(srt_file):
-            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='Alignment=2,FontSize=24,OutlineColour=&H80000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=120'[v]"
+        # If we have lyrics, burn them in with much better styling
+        if has_lyrics and os.path.exists(srt_file):
+            # Premium Vertical Layout Styling: Large font, semi-transparent box, bottom-center alignment
+            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='Alignment=2,FontSize=64,OutlineColour=&H40000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=250'[v]"
+        else:
+            # Add a high-visibility labels for instrumental tracks
+            filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
         
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
             '-filter_complex', filter_complex,
             '-map', '[v]', '-map', '0:a',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22',
             '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-b:a', '128k', output_file
+            '-c:a', 'aac', '-b:a', '192k', output_file
         ]
         
+        log_msg(f">>> [RENDER] Executing FFmpeg for Music Visualizer (Duration: {t}s)...")
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Cleanup temp srt
-        if os.path.exists(srt_file): os.remove(srt_file)
+        if os.path.exists(srt_file): 
+            try: os.remove(srt_file)
+            except: pass
         
         return output_file
     except Exception as e:
@@ -850,7 +911,8 @@ def extract_random_clip(video_path):
             
         # 2. Pick random start (at least 10s before end)
         start = random.uniform(2, max(2, duration - 12))
-        output_file = f"clip_{int(time.time())}.mp4"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        output_file = os.path.join(base_dir, f"clip_{int(time.time())}.mp4")
         
         # 3. Extract 10s clip
         # Detect if we should crop to vertical or keep square
