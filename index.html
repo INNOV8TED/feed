@@ -61,8 +61,16 @@
 
         .social-card .pulse-header,
         .social-card .pulse-sub-label,
-        .social-card .daily-spark {
-            display: none;
+        .social-card .daily-spark,
+        .social-card div[style*="font-size: 0.65em"] {
+            display: none !important;
+        }
+
+        .social-card .sprite-wrapper {
+            bottom: 20px !important;
+            right: 20px !important;
+            width: 120px !important;
+            height: 120px !important;
         }
 
         .social-card .sprite {
@@ -70,6 +78,11 @@
             mix-blend-mode: normal !important;
             background-size: contain;
             filter: drop-shadow(0 0 15px var(--accent-color));
+        }
+
+        .social-card .pulse-bg {
+            opacity: 1 !important;
+            filter: brightness(1) !important;
         }
 
         .social-card .pulse-label {
@@ -996,10 +1009,12 @@
                 ${isMemory ? `<div class="memory-badge">◈ MEMORY // ${createdAt.toLocaleDateString([], {month: 'short', day: 'numeric'})}</div>` : ''}
                 
                 <div class="pulse-bg" style="opacity: ${imageUrl ? (isMemory ? 0.3 : 0.7) : 0}; z-index: 1;">
-                    ${imageUrl && !imageUrl.toLowerCase().endsWith('.mp4') ? `<img src="${imageUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;">` : ''}
-                    ${imageUrl && imageUrl.toLowerCase().endsWith('.mp4') ? `
-                        <video id="vid-${data.id}" autoplay muted loop playsinline style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;">
-                            <source src="${imageUrl}" type="video/mp4">
+                    ${imageUrl && !imageUrl.toLowerCase().endsWith('.mp4') && !imageUrl.toLowerCase().endsWith('.mov') ? `<img src="${imageUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;">` : ''}
+                    ${imageUrl && (imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov')) ? `
+                        <video id="vid-${data.id}" autoplay muted loop playsinline 
+                               oncanplay="this.play()"
+                               style="width: 100%; height: 100%; object-fit: cover; opacity: 0.9; background: #000;">
+                            <source src="${imageUrl}" type="${imageUrl.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/quicktime'}">
                         </video>
                     ` : ''}
                 </div>

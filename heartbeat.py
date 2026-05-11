@@ -430,6 +430,22 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 1. PREPARE METADATA
             mood = workflow['mood']
             quote = get_random_quote()
+            
+            action_label = workflow['label']
+            
+            # FOLDER-SPECIFIC LOGIC (MEMORIES & SOCIAL)
+            path_upper = file_path.upper()
+            if "MEMORIES" in path_upper or "SOCIAL" in path_upper:
+                # Use filename as label, but clean it up
+                filename = os.path.splitext(os.path.basename(file_path))[0]
+                # Remove numbers and underscores
+                import re
+                clean_name = re.sub(r'[\d_]+', ' ', filename).strip()
+                # If it's MEMORIES, add location/date context if possible (from folder structure)
+                if "MEMORIES" in path_upper:
+                    action_label = f"◈ {clean_name}"
+                else:
+                    action_label = clean_name
 
             software_map = {
                 ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
@@ -499,7 +515,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 3. DISPATCH FULL PULSE TO SUPABASE
             data = {
                 "project_name": project_name,
-                "action_label": workflow["label"],
+                "action_label": action_label,
                 "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
                 "is_milestone": (is_video or is_audio or software == "Premiere Pro" or software == "Photoshop")
