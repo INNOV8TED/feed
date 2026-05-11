@@ -992,6 +992,7 @@
             const imageUrl = parts[2] || '';
             const software = (parts[3] || 'Creative Engine').toUpperCase();
             const quote = parts[4] || '';
+            const channelId = (parts[5] || 'INNOV8').toUpperCase();
 
             const createdAt = new Date(data.created_at || Date.now());
             const timeStr = createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
