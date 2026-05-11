@@ -76,11 +76,15 @@
 
         .cinematic-mode .card-logo {
             opacity: 0.9;
-            bottom: 30px; right: 30px; /* PINNED TO BOTTOM RIGHT */
-            left: auto;
-            width: 120px;
+            z-index: 100;
+            width: 140px;
             filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+            transition: opacity 0.5s;
+            pointer-events: none;
         }
+
+        .logo-bottom-right { bottom: 40px; right: 40px; left: auto; }
+        .logo-bottom-left  { bottom: 40px; left: 40px; right: auto; }
 
         /* DISTINCT SOCIAL THEME */
         .cinematic-mode .pulse-label {
@@ -1018,9 +1022,9 @@
             
             // Channel Branding Map
             const channelBranding = {
-                'LANNA': { logo: 'lanna_logo.png', color: '#ff99cc' },
-                'BLUE':  { logo: 'blue_logo.png', color: '#00ccff' },
-                'INNOV8': { logo: 'innov8_logo.png', color: '#BF00FF' }
+                'LANNA': { logo: 'lanna_logo.png', color: '#ff99cc', pos: 'logo-bottom-left' },
+                'BLUE':  { logo: 'blue_logo.png', color: '#00ccff', pos: 'logo-bottom-left' },
+                'INNOV8': { logo: 'innov8_logo.png', color: '#BF00FF', pos: 'logo-bottom-right' }
             };
             const brand = channelBranding[channelId] || channelBranding['INNOV8'];
             
@@ -1103,7 +1107,7 @@
                     ${quote ? `<div class="daily-spark">"${quote}"</div>` : ''}
                 </div>
                 ${isSocial ? `
-                <div class="card-logo">
+                <div class="card-logo ${brand.pos}">
                     <img src="${brand.logo}" alt="Logo" style="width: 100%;">
                 </div>
                 ` : ''}
