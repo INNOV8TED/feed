@@ -183,29 +183,7 @@
         .hud-tag span { opacity: 0.5; }
         .hud-value { font-weight: 700; text-shadow: 0 0 10px var(--accent-color); }
 
-        /* MASTER AUDIO TOGGLE */
-        #master-audio-hud {
-            position: fixed;
-            bottom: 40px; right: 40px;
-            z-index: 2600;
-            background: rgba(10, 10, 10, 0.8);
-            border: 1px solid var(--accent-color);
-            color: var(--accent-color);
-            padding: 12px;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 0 15px rgba(0, 255, 170, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #master-audio-hud:hover {
-            background: var(--accent-color);
-            color: #000;
-            box-shadow: 0 0 25px var(--accent-color);
-        }
+        #master-audio-hud { display: none; }
 
         /* SONAR ANIMATION */
         @keyframes sonar-pulse {
@@ -843,10 +821,6 @@
         </div>
     </div>
 
-    <div id="master-audio-hud" onclick="toggleMasterMute()" title="Master Audio Toggle">
-        <span class="material-icons" id="master-audio-icon">volume_up</span>
-    </div>
-
     <div id="page-title">IN-NO-V8 Work Feed</div>
     <div id="info-toggle" onclick="togglePanel()" title="Decode the Studio Pulse: Learn how this feed works.">
         <div class="pulse-dot"></div>
@@ -910,33 +884,7 @@
             osc.stop(audioCtx.currentTime + 0.2);
         }
 
-        // MASTER AUDIO CONTROL
-        let isMasterMuted = false;
-        function toggleMasterMute() {
-            isMasterMuted = !isMasterMuted;
-            const icon = document.getElementById('master-audio-icon');
-            const btn = document.getElementById('master-audio-hud');
-            
-            // Toggle all active videos
-            document.querySelectorAll('video').forEach(vid => {
-                vid.muted = isMasterMuted;
-            });
-
-            // Update individual buttons for consistency
-            document.querySelectorAll('.audio-toggle .material-icons').forEach(i => {
-                i.innerText = isMasterMuted ? 'volume_off' : 'volume_up';
-            });
-
-            if (isMasterMuted) {
-                icon.innerText = 'volume_off';
-                btn.style.borderColor = 'rgba(255,255,255,0.2)';
-                btn.style.color = 'rgba(255,255,255,0.2)';
-            } else {
-                icon.innerText = 'volume_up';
-                btn.style.borderColor = 'var(--accent-color)';
-                btn.style.color = 'var(--accent-color)';
-            }
-        }
+        // MASTER AUDIO CONTROL REMOVED
 
         // VIDEO PROGRESS LOGIC
         function updateVideoProgress(vid, id) {
@@ -946,6 +894,18 @@
                 bar.style.width = percent + '%';
             }
         }
+
+        // VIDEO INTERSECTION OBSERVER (FOR PERFORMANCE)
+        const videoObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const vid = entry.target;
+                if (entry.isIntersecting) {
+                    vid.play().catch(() => {}); // Play when visible
+                } else {
+                    vid.pause(); // Pause when out of view to save resources
+                }
+            });
+        }, { threshold: 0.1 });
 
         // MOUSEWHEEL HORIZONTAL SCROLL
         mainContainer.addEventListener('wheel', (evt) => {
@@ -1003,7 +963,7 @@
             return { class: 'time-midnight', label: 'DEEP NIGHT' };
         }
 
-        function createPulseCard(data, isInitial = false) {
+        function createPulseCard(data, isInitial = false, forcePreload = false) {
             const parts = (data.mood_tag || '').split('|');
             const mood = parts[0] || 'focused';
             const subLabel = parts[1] || 'Neural link stable.';
@@ -1043,10 +1003,10 @@
                     ${imageUrl && !imageUrl.toLowerCase().endsWith('.mp4') && !imageUrl.toLowerCase().endsWith('.mov') ? `<img src="${imageUrl}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;">` : ''}
                     ${imageUrl && (imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.toLowerCase().endsWith('.mov')) ? `
                         <div class="video-loader" id="loader-${data.id}"></div>
-                        <video id="vid-${data.id}" autoplay muted loop playsinline preload="auto"
+                        <video id="vid-${data.id}" muted loop playsinline 
+                               preload="${forcePreload ? 'auto' : 'metadata'}"
                                onwaiting="document.getElementById('loader-${data.id}').style.display = 'block'"
                                onplaying="document.getElementById('loader-${data.id}').style.display = 'none'"
-                               oncanplay="this.play()"
                                ontimeupdate="updateVideoProgress(this, '${data.id}')"
                                style="width: 100%; height: 100%; object-fit: cover; opacity: 1; background: #000;">
                             <source src="${imageUrl}" type="${imageUrl.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/quicktime'}">
@@ -1185,7 +1145,7 @@
 
         setInterval(checkStudioSilence, 30000); // Check every 30 seconds
 
-        function updateUI(data, isInitial = false) {
+        function updateUI(data, isInitial = false, forcePreload = false) {
             if (!data.id) return;
             const pulseTime = new Date(data.created_at || Date.now());
             lastPulseTime = pulseTime.getTime();
@@ -1245,13 +1205,17 @@
             // Remove from any existing cards
             document.querySelectorAll('.social-card').forEach(el => el.classList.remove('social-card'));
             
-            const newCard = createPulseCard(data, isInitial);
+            const newCard = createPulseCard(data, isInitial, forcePreload);
             newCard.setAttribute('data-pulse-id', data.id);
             
             // Add social-card if it's the newest (only when not initial bulk loading OR if it's the first of the bulk)
             // Wait, when loading initial, the last one processed is the newest.
             // When inserting, the new one is the newest.
             newCard.classList.add('social-card');
+
+            // Add to observer if video
+            const vid = newCard.querySelector('video');
+            if (vid) videoObserver.observe(vid);
 
             currentColumn.prepend(newCard);
             
@@ -1271,7 +1235,14 @@
                 .order('created_at', { ascending: false })
                 .limit(40);
             
-            if (data) data.reverse().forEach(p => updateUI(p, true));
+            if (data) {
+                const pulses = data.reverse();
+                pulses.forEach((p, index) => {
+                    // Only preload="auto" for the 5 most recent items
+                    const shouldPreload = (index >= pulses.length - 5);
+                    updateUI(p, true, shouldPreload);
+                });
+            }
             
             // INSTANT STATUS CHECK
             checkStudioSilence();
