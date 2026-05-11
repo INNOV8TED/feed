@@ -69,36 +69,26 @@
             filter: brightness(1) !important;
         }
 
-        .card-logo {
-            position: absolute;
-            bottom: 30px; left: 30px;
-            width: 100px;
-            z-index: 100;
-            opacity: 0;
-            transition: opacity 0.5s;
-            pointer-events: none;
-        }
-
         .cinematic-mode .card-logo {
             opacity: 0.9;
-            bottom: 50px; right: 50px; /* MOVED TO BOTTOM RIGHT */
+            bottom: 30px; right: 30px; /* PINNED TO BOTTOM RIGHT */
             left: auto;
-            width: 180px;
+            width: 120px;
             filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
         }
 
-        /* DISTINCT SOCIAL THEME: CYBER GOLD */
+        /* DISTINCT SOCIAL THEME: ELECTRIC VIOLET */
         .cinematic-mode {
-            --accent-color: #FFD700; /* GOLD */
-            border-color: rgba(255, 215, 0, 0.4) !important;
-            box-shadow: 0 0 40px rgba(255, 215, 0, 0.1) !important;
+            --accent-color: #BF00FF; /* ELECTRIC VIOLET */
+            border-color: rgba(191, 0, 255, 0.4) !important;
+            box-shadow: 0 0 40px rgba(191, 0, 255, 0.1) !important;
         }
         .cinematic-mode .pulse-label {
-            color: #FFD700;
-            text-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+            color: #BF00FF;
+            text-shadow: 0 0 15px rgba(191, 0, 255, 0.3);
         }
         .cinematic-mode .pulse-sub-label {
-            color: #FFD700;
+            color: #BF00FF;
             opacity: 0.8;
             font-weight: 700;
         }
@@ -1099,9 +1089,10 @@
                     <div style="font-size: 0.65em; opacity: 0.3; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; font-family: 'Space Mono';">
                         Engine: ${software}
                     </div>
-                    <div class="card-logo">
-                        <img src="innov8_logo.png" alt="Logo" style="width: 100%;">
-                    </div>
+                    ${quote ? `<div class="daily-spark">"${quote}"</div>` : ''}
+                </div>
+                <div class="card-logo">
+                    <img src="innov8_logo.png" alt="Logo" style="width: 100%;">
                 </div>
             `;
             return card;
