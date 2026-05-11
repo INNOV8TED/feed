@@ -41,7 +41,7 @@
 
         .memory-badge {
             position: absolute;
-            top: 20px; left: 20px;
+            bottom: 20px; left: 20px;
             background: rgba(255, 255, 255, 0.1);
             color: #fff;
             font-family: 'Space Mono';
@@ -51,6 +51,35 @@
             border: 1px solid rgba(255,255,255,0.2);
             z-index: 10;
             backdrop-filter: blur(5px);
+        }
+
+        /* SOCIAL CARD (LATEST) */
+        .social-card {
+            border-color: var(--accent-color) !important;
+            box-shadow: 0 0 50px rgba(0, 255, 170, 0.2) !important;
+        }
+
+        .social-card .pulse-header,
+        .social-card .pulse-sub-label,
+        .social-card .daily-spark {
+            display: none;
+        }
+
+        .social-card .sprite {
+            background-image: url('innov8_logo.png') !important;
+            mix-blend-mode: normal !important;
+            background-size: contain;
+            filter: drop-shadow(0 0 15px var(--accent-color));
+        }
+
+        .social-card .pulse-label {
+            font-size: 3.2em !important;
+            text-align: center;
+            width: 100%;
+            margin-top: 40px !important;
+            background: linear-gradient(to bottom, #fff, var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         /* THEMES */
@@ -984,8 +1013,18 @@
                 pulseInColumn = 0;
             }
             
+            // Handle SOCIAL CARD (Only the absolute newest gets this)
+            // Remove from any existing cards
+            document.querySelectorAll('.social-card').forEach(el => el.classList.remove('social-card'));
+            
             const newCard = createPulseCard(data, isInitial);
             newCard.setAttribute('data-pulse-id', data.id);
+            
+            // Add social-card if it's the newest (only when not initial bulk loading OR if it's the first of the bulk)
+            // Wait, when loading initial, the last one processed is the newest.
+            // When inserting, the new one is the newest.
+            newCard.classList.add('social-card');
+
             currentColumn.prepend(newCard);
             
             if (isHero) pulseInColumn = 100;
