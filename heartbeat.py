@@ -581,9 +581,22 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except Exception as e:
                     log_msg(f"[GRID SYNC ERROR] {e}")
                 
-                # ALSO POST AS STORY (FULL SCREEN SNAPSHOT)
-                msg_story = f"◈ LIVE STUDIO PULSE: {project_name} ◈"
-                broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_url=asset_url, is_video=False, post_type="STORY")
+                # ALSO POST AS STORY (VERTICAL 9:16 SNAPSHOT)
+                log_msg(f">>> [STORY] Generating vertical crop for {project_name}...")
+                story_file = f"story_{int(time.time())}.jpg"
+                try:
+                    # FFmpeg 9:16 Vertical Crop (Center)
+                    subprocess.run(['ffmpeg', '-y', '-i', asset_file, '-vf', r"scale=w=-1:h=1920,crop=1080:1920", story_file], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    with open(story_file, 'rb') as f:
+                        storage_path = f"pulses/story_{int(time.time())}.jpg"
+                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
+                        story_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                    
+                    msg_story = f"◈ LIVE STUDIO PULSE: {project_name} ◈"
+                    broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_url=story_url, is_video=False, post_type="STORY")
+                    if os.path.exists(story_file): os.remove(story_file)
+                except Exception as e:
+                    log_msg(f"[STORY SYNC ERROR] {e}")
                 
             # --- FINAL CLEANUP ---
             if asset_file and ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file or "image_pulse_" in asset_file) and os.path.exists(asset_file):
