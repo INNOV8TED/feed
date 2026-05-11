@@ -678,13 +678,12 @@
             text-align: left; 
             justify-content: center;
             padding: 40px;
-            background: rgba(10, 10, 10, 0.7); /* CLEARER VISION */
-            backdrop-filter: blur(10px); /* REFINED IMMERSION */
+            background: rgba(10, 10, 10, 0.9); /* OPAQUE FOR PERFORMANCE */
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
             position: relative;
             overflow: hidden;
-            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); /* SIMPLER TRANSITION */
         }
         .hero-card { height: 920px !important; width: 480px !important; }
         .pulse-label { 
