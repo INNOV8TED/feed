@@ -543,18 +543,25 @@
             box-shadow: 0 0 30px var(--media-glow) !important;
         }
 
+        /* DYNAMIC HEADER GRADIENTS */
+        .pulse-card .pulse-label {
+            background: linear-gradient(135deg, #ffffff 40%, var(--accent-color) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 5px 15px rgba(0,0,0,0.3); /* Subtitle pop */
+            display: inline-block;
+        }
+
+        .pulse-card.media-themed .pulse-label {
+            background: linear-gradient(135deg, #ffffff 40%, var(--media-accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
         .pulse-card.media-themed .project-tag,
         .pulse-card.media-themed .pulse-sub-label,
         .pulse-card.media-themed .daily-spark {
             color: var(--media-accent) !important;
-        }
-
-        .pulse-card.media-themed .pulse-label {
-            background: linear-gradient(to right, #ffffff 40%, var(--media-accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: none;
-            display: inline-block; /* Ensure clip works correctly */
         }
 
         .pulse-card.media-themed .render-progress-bar {
