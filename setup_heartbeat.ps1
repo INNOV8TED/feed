@@ -12,8 +12,8 @@ $TaskName = "StudioHeartbeatPersistence"
 # Action: Run the silent VBS launcher
 $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$VbsPath`""
 
-# Trigger: Start when any user logs on
-$Trigger = New-ScheduledTaskTrigger -AtLogOn
+# Trigger: Start when any user logs on, AND repeat every 10 minutes to ensure persistence
+$Trigger = New-ScheduledTaskTrigger -AtLogOn -RepetitionInterval (New-TimeSpan -Minutes 10)
 
 try {
     # Robust Settings: Unlimited execution time, auto-restart on failure
