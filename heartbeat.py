@@ -423,17 +423,19 @@ class HeartbeatHandler(FileSystemEventHandler):
             if current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD:
                 return
             
-            # 1. PROJECT COOLDOWN & QUALITY FILTER
-            cooldown_key = f"{project_name}_{workflow['label']}"
+            # 1. FILE-PATH COOLDOWN (Echo-Zero Lock)
+            # Use the absolute path as the key to prevent echos for the same file
+            cooldown_key = file_path
             
             if cooldown_key in last_sent_cache:
                 last_pulse = last_sent_cache[cooldown_key]
                 
                 # High-quality pulses (videos) have a much longer cooldown for the same file
-                if is_video and current_time - last_pulse["time"] < 600: # 10 minute cooldown
+                # Standard render takes time; we only want one pulse per 10 mins for the same file
+                if is_video and current_time - last_pulse["time"] < 600: 
                     return
                 
-                # Standard burst protection for everything else
+                # Standard burst protection for everything else (15s)
                 if not is_video and current_time - last_pulse["time"] < 15:
                     return
             
