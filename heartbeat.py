@@ -526,10 +526,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
 
             # 3. DISPATCH FULL PULSE TO SUPABASE
+            status_text = "Social active." if "MEMORIES" in path_upper or "SOCIAL" in path_upper else "Neural link active."
             data = {
                 "project_name": project_name,
                 "action_label": action_label,
-                "mood_tag": f"{mood}|Neural link active.|{asset_url}|{software}|{quote}", 
+                "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}", 
                 "source": "Windows-Workstation",
                 "is_milestone": (is_video or is_audio or software == "Premiere Pro" or software == "Photoshop")
             }

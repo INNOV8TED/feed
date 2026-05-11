@@ -1085,15 +1085,17 @@
                             </div>
                         ` : ''}
                     </div>
-                    <div class="pulse-sub-label">◈ ${timeContext.label} // ${subLabel}</div>
+                    <div class="pulse-sub-label">◈ ${timeContext.label} // ${subLabel.replace('Neural link', isSocial ? 'Social' : 'Neural link')}</div>
                     <div style="font-size: 0.65em; opacity: 0.3; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px; font-family: 'Space Mono';">
                         Engine: ${software}
                     </div>
                     ${quote ? `<div class="daily-spark">"${quote}"</div>` : ''}
                 </div>
+                ${isSocial ? `
                 <div class="card-logo">
                     <img src="innov8_logo.png" alt="Logo" style="width: 100%;">
                 </div>
+                ` : ''}
             `;
             return card;
         }
