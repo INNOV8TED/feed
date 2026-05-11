@@ -610,6 +610,8 @@
             overflow-x: auto;
             overflow-y: hidden;
             background: transparent;
+            scroll-behavior: smooth; /* HARDENED SMOOTH SCROLLING */
+            -webkit-overflow-scrolling: touch;
         }
         #stream { 
             height: 100%;
@@ -895,22 +897,27 @@
             }
         }
 
-        // VIDEO INTERSECTION OBSERVER (FOR PERFORMANCE)
+        // PREDICTIVE VIDEO OBSERVER (FOR BUTTER SMOOTH PLAYBACK)
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 const vid = entry.target;
                 if (entry.isIntersecting) {
-                    vid.play().catch(() => {}); // Play when visible
+                    vid.preload = "auto"; // Aggressive preload when nearing viewport
+                    vid.play().catch(() => {});
                 } else {
-                    vid.pause(); // Pause when out of view to save resources
+                    vid.pause();
                 }
             });
-        }, { threshold: 0.1 });
+        }, { 
+            rootMargin: '0px 1200px 0px 1200px', // PRELOAD 1200px AHEAD
+            threshold: 0.01 
+        });
 
-        // MOUSEWHEEL HORIZONTAL SCROLL
+        // MOUSEWHEEL HORIZONTAL SCROLL (SMOOTHENED)
         mainContainer.addEventListener('wheel', (evt) => {
             evt.preventDefault();
-            mainContainer.scrollLeft += evt.deltaY;
+            // Using scrollBy with behavior 'auto' because scroll-behavior: smooth is on the CSS
+            mainContainer.scrollLeft += (evt.deltaY * 1.5); 
         }, { passive: false });
 
         function togglePanel() {
