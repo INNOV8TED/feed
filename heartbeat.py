@@ -809,21 +809,42 @@ class HeartbeatHandler(FileSystemEventHandler):
             creative_title = generate_creative_title(folder_name)
             msg = f"◈ LANNA WHISPERS: {creative_title} (Collection) ◈"
             
-            # Sync to Website
-            insert_pulse_to_supabase("Lanna Whispers", "Collection", asset_data[0]["url"], channel_id="LANNA", is_social=True)
+            carousel_name = os.path.basename(folder_path)
+            creative_label = generate_creative_title(carousel_name)
+            action_label = f"◈ LANNA WHISPERS: {creative_label} ◈"
             
-            # Broadcast to Buffer
-            # If we normalized everything, is_video must be True to trigger Video Carousel logic in Buffer
-            force_video = is_mixed or has_video
-            success = broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=asset_data, is_video=force_video, post_type="GRID", bypass_quota=True)
+            log_msg(f">>> [CAROUSEL] Verified Quota. Dispatching pulse: {action_label}")
             
-            if success:
+            # 5. Sync to Website (Unified Pulse)
+            # Use the first asset as the cover
+            insert_pulse_to_supabase(
+                project_name="Lanna Whispers",
+                action_label=action_label,
+                asset_url=asset_data[0]["url"],
+                mood="mystical",
+                software="Graphic Engine",
+                channel_id="LANNA",
+                is_social=True
+            )
+            
+            # 6. Dispatch to Buffer
+            broadcast_to_buffer(
+                action_label, 
+                profile_id=BUFFER_PROFILE_ID_LANNA, 
+                asset_urls=asset_data, 
+                is_video=has_video, 
+                post_type="GRID", 
+                bypass_quota=True
+            )
+            
+            # 7. Update Weekly Quota
+            try:
                 quota_data["weekly_lanna_carousel_sent"] = current_week
                 with open(QUOTA_FILE, 'w') as f:
                     json.dump(quota_data, f)
-                log_msg(f">>> [CAROUSEL SUCCESS] {folder_name} unified and live.")
+            except: pass
             
-            # Cleanup temp videos
+            # 8. Cleanup Temp Files
             for tf in temp_files:
                 try: os.remove(tf)
                 except: pass
@@ -1782,6 +1803,7 @@ if __name__ == "__main__":
             
             # PROACTIVE STARTUP SCAN: Ingest existing social content
             log_msg("◈ [STARTUP] Scanning for unsent social content...")
+            processed_folders = set()
             social_paths = [
                 os.path.join(WATCH_PATH, "SOCIAL"),
                 os.path.join(WATCH_PATH, "MEMORIES"),
@@ -1790,17 +1812,21 @@ if __name__ == "__main__":
             for s_path in social_paths:
                 if not os.path.exists(s_path): continue
                 for root, dirs, files in os.walk(s_path):
-                    # For carousels, we check the folder
-                    path_parts = root.replace("\\", "/").split("/")
-                    if "LANNA" in [p.upper() for p in path_parts] and os.path.basename(root).upper() != "LANNA":
-                        # It's a carousel folder. We'll simulate a change to one of its files to trigger detection
+                    if any(ign.lower() in root.lower() for ign in IGNORE_FOLDERS): continue
+                    
+                    # CAROUSEL DETECTION
+                    if "LANNA" in root.upper() and os.path.basename(os.path.dirname(root)).upper() == "LANNA":
+                        if root in processed_folders: continue
+                        processed_folders.add(root)
                         if files:
+                            log_msg(f"◈ [INGEST] Carousel detected: {os.path.basename(root)}")
                             mock_event = type('obj', (object,), {'src_path': os.path.join(root, files[0]), 'is_directory': False})
                             event_handler.process_event(mock_event)
-                            time.sleep(2) # Prevent flood
-                            continue # Processed the whole folder as a carousel
+                            time.sleep(2)
+                            continue
                     
                     for f in files:
+                        if any(ign.lower() in f.lower() for ign in IGNORE_FILES): continue
                         ext = os.path.splitext(f)[1].lower().strip()
                         if any(key in ext for key in WORKFLOW_MAP):
                             path = os.path.join(root, f)
