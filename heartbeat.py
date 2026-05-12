@@ -82,6 +82,8 @@ def load_cache():
                 if isinstance(data, dict) and "size_cache" in data:
                     last_size_cache = data.get("size_cache", {})
                     fingerprint_cache = data.get("fingerprints", {})
+                    global last_inventory_alert_time
+                    last_inventory_alert_time = data.get("last_diagnostic_date", "")
                 else:
                     last_size_cache = data # Legacy support
             log_msg(f"◈ [CACHE] Loaded {len(last_size_cache)} states and {len(fingerprint_cache)} fingerprints.")
@@ -93,7 +95,8 @@ def save_cache():
     try:
         data = {
             "size_cache": last_size_cache,
-            "fingerprints": fingerprint_cache
+            "fingerprints": fingerprint_cache,
+            "last_diagnostic_date": last_inventory_alert_time
         }
         with open(CACHE_FILE, 'w') as f:
             json.dump(data, f)
@@ -161,8 +164,8 @@ def generate_and_upload_thumbnail(video_path):
     """Extracts a frame from a video and uploads it as a thumbnail."""
     try:
         temp_thumb = f"thumb_temp_{int(time.time())}.jpg"
-        # Extract frame at 5 seconds (to avoid fade-from-black intros)
-        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:05', '-vframes', '1', temp_thumb]
+        # Extract frame at 8 seconds (to avoid long fade-from-black intros)
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:08', '-vframes', '1', temp_thumb]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if os.path.exists(temp_thumb):
@@ -425,6 +428,28 @@ if OPENAI_API_KEY:
         log_msg(f"◈ [AI SYSTEM ERROR] Initialization failed: {e}")
 else:
     log_msg("◈ [AI SYSTEM] Warning: OPENAI_API_KEY not found in .env")
+
+def generate_creative_title(filename):
+    """Uses AI to turn generic filenames into evocative studio titles."""
+    if not openai_client: return filename
+    try:
+        # Clean the filename
+        clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
+        if len(clean_name) > 30 and " " in clean_name: # Already looks like a title
+             return clean_name.title()
+             
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a creative director. Turn generic video filenames into 2-5 word evocative, professional studio titles. No quotes. No hashtags. Just the title. If it's already a good title, just clean it up."},
+                {"role": "user", "content": f"Filename: {clean_name}"}
+            ],
+            max_tokens=20
+        )
+        title = response.choices[0].message.content.strip().replace('"', '')
+        return title
+    except:
+        return filename.replace("_", " ").title()
 
 def send_email_alert(subject, message):
     """Sends a high-priority email alert via Resend."""
@@ -774,7 +799,8 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             # 4. Dispatch Unified Carousel
             folder_name = os.path.basename(folder_path)
-            msg = f"◈ LANNA WHISPERS: {folder_name} (Collection) ◈"
+            creative_title = generate_creative_title(folder_name)
+            msg = f"◈ LANNA WHISPERS: {creative_title} (Collection) ◈"
             
             # Sync to Website
             insert_pulse_to_supabase("Lanna Whispers", "Collection", asset_data[0]["url"], channel_id="LANNA", is_social=True)
@@ -897,11 +923,13 @@ class HeartbeatHandler(FileSystemEventHandler):
             mood = workflow['mood']
             quote = get_random_quote()
             # Identify Action Label
-            action_label = workflow["label"]
+            filename = os.path.basename(file_path)
+            creative_label = generate_creative_title(filename)
+            action_label = creative_label
             
             # AI CAPTION UPGRADE (For Social/Lanna Posts)
             is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
-            if openai_client and (is_social_folder or "LANNA" in path_upper) and not is_audio:
+            if openai_client and is_social_folder and not is_audio:
                 ai_caption = generate_visual_caption(file_path)
                 if ai_caption:
                     action_label = ai_caption
@@ -910,18 +938,25 @@ class HeartbeatHandler(FileSystemEventHandler):
             path_upper = file_path.upper()
             if "MEMORIES" in path_upper or "SOCIAL" in path_upper:
                 # Use filename as label, but clean it up
-                filename = os.path.splitext(os.path.basename(file_path))[0]
+                filename_no_ext = os.path.splitext(filename)[0]
                 # Remove numbers and underscores
                 import re
-                clean_name = re.sub(r'[\d_]+', ' ', filename).strip()
+                clean_name = re.sub(r'[\d_]+', ' ', filename_no_ext).strip()
                 
                 if "MEMORIES" in path_upper:
-                    action_label = f"◈ {clean_name}"
-                    
                     # EXTRACT NUMERICAL INDEX (e.g. "1 - Title" -> 1)
                     try:
-                        match = re.search(r'^(\d+)', filename)
+                        match = re.search(r'^(\d+)', filename_no_ext)
                         file_index = int(match.group(1)) if match else None
+                        action_label = f"◈ MEMORIES ◈\n#{file_index or '?'}: {creative_label}"
+                    except: 
+                        action_label = f"◈ MEMORIES: {creative_label} ◈"
+                elif "BLUE" in path_upper:
+                    action_label = f"◈ BLUE: {creative_label} ◈"
+                elif "LANNA" in path_upper:
+                    action_label = f"◈ LANNA WHISPERS: {creative_label} ◈"
+                else:
+                    action_label = f"◈ STUDIO BROADCAST: {creative_label} ◈"
                     except: file_index = None
 
                     # WEEKLY & SEQUENTIAL QUOTA CHECK
@@ -1201,7 +1236,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 asset_is_video = asset_url.lower().endswith(('.mp4', '.mov'))
                 
                 if "MEMORIES" in path_upper:
-                    broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
                     if is_audio:
                         width, height = 1080, 1920
@@ -1239,11 +1274,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                     if is_vertical:
                         target_type = "REEL" if is_video else "STORY"
                         thumb = generate_and_upload_thumbnail(active_source) if is_video else None
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type=target_type, bypass_quota=False)
+                        broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type=target_type, bypass_quota=False)
                     else:
                         # Square/Horizontal
                         thumb = generate_and_upload_thumbnail(active_source) if is_video else None
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type="GRID", bypass_quota=False)
+                        broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type="GRID", bypass_quota=False)
                 
             elif is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
@@ -1767,9 +1802,11 @@ def check_inventory_levels():
             )
             
             last_inventory_alert_time = current_date
+            save_cache()
         else:
             log_msg("◈ [INVENTORY] 9PM Diagnostic: All queues healthy.")
             last_inventory_alert_time = current_date # Still mark as checked today
+            save_cache()
             
     except Exception as e:
         log_msg(f"[INVENTORY DIAGNOSTIC ERROR] {e}")
