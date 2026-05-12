@@ -29,6 +29,12 @@ BUFFER_PROFILE_ID_MAIN = os.environ.get("BUFFER_PROFILE_ID")
 BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
 BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+
+# Initialize Resend
+import resend
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 # Initialize OpenAI Client
 openai_client = None
@@ -419,6 +425,28 @@ if OPENAI_API_KEY:
         log_msg(f"◈ [AI SYSTEM ERROR] Initialization failed: {e}")
 else:
     log_msg("◈ [AI SYSTEM] Warning: OPENAI_API_KEY not found in .env")
+
+def send_email_alert(subject, message):
+    """Sends a high-priority email alert via Resend."""
+    if not RESEND_API_KEY: return
+    try:
+        params = {
+            "from": "Studio Heartbeat <alerts@in-no-v8.com>",
+            "to": ["stephen@in-no-v8.com"],
+            "subject": subject,
+            "html": f"""
+            <div style="font-family: sans-serif; background: #050505; color: #fff; padding: 40px; border: 1px solid #00ffaa; border-radius: 8px;">
+                <h1 style="color: #00ffaa; margin-top: 0;">◈ STUDIO SUPPLY ALERT</h1>
+                <p style="font-size: 1.1em;">{message}</p>
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+                <p style="font-size: 0.8em; opacity: 0.5;">This is an automated diagnostic from your Studio Pulse engine.</p>
+            </div>
+            """
+        }
+        resend.Emails.send(params)
+        log_msg(f"◈ [EMAIL] Alert sent to stephen@in-no-v8.com: {subject}")
+    except Exception as e:
+        log_msg(f"[EMAIL ERROR] {e}")
 
 def convert_image_to_video(image_path):
     """Converts a static image into a 3-second MP4 video for carousel compatibility."""
@@ -1713,16 +1741,26 @@ def check_inventory_levels():
         
         if missing_reports:
             log_msg(f"◈ [INVENTORY] Missing: {', '.join(missing_reports)}")
+            advice_msg = f"Diagnostic complete. To maintain a 24h buffer, please resupply: {', '.join(missing_reports)}."
+            
+            # Pulse to Website
             insert_pulse_to_supabase(
                 project_name="[SYSTEM_ADVICE]",
                 action_label="Supply Chain Alert",
                 asset_url="",
                 mood="warning",
                 software="Inventory Diagnostic",
-                quote=f"Diagnostic complete. To maintain a 24h buffer, please resupply: {', '.join(missing_reports)}. Drop new renders into SOCIAL or MEMORIES folders.",
+                quote=f"{advice_msg} Drop new renders into SOCIAL or MEMORIES folders.",
                 channel_id="SYSTEM",
                 is_milestone=False
             )
+            
+            # Send Email Alert
+            send_email_alert(
+                subject="◈ STUDIO ALERT: Supply Chain Low",
+                message=f"Your social broadcast pipeline is running low on content. To maintain your 24-hour buffer for all channels, please replenish: <strong>{', '.join(missing_reports)}</strong>."
+            )
+            
             last_inventory_alert_time = now
         else:
             log_msg("◈ [INVENTORY] All queues healthy (1-day buffer active).")
