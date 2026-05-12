@@ -1653,6 +1653,9 @@ def process_backlog(handler):
 
     except Exception as e:
         log_msg(f"[BACKLOG ERROR] {e}")
+    
+    # Reschedule Backlog Check every hour (3600 seconds)
+    threading.Timer(3600, lambda: process_backlog(handler)).start()
 
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
