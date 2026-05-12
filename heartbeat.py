@@ -681,43 +681,46 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             log_msg(f">>> [CAROUSEL] Dispatching {len(media_files)} items from {os.path.basename(folder_path)}...")
             
-            # 3. Upload All to Supabase
-            asset_data = []
+            # 3. Upload All to Supabase and Group by Type
+            videos = []
+            images = []
             for f in sorted(media_files): # Ensure order
                 url = upload_to_supabase(f, "pulses")
-                if url:
-                    item = {"url": url}
-                    if f.lower().endswith(('.mp4', '.mov')):
-                        thumb = generate_and_upload_thumbnail(f)
-                        if thumb: item["thumbnail"] = thumb
-                    asset_data.append(item)
+                if not url: continue
+                
+                item = {"url": url}
+                if f.lower().endswith(('.mp4', '.mov')):
+                    thumb = generate_and_upload_thumbnail(f)
+                    if thumb: item["thumbnail"] = thumb
+                    videos.append(item)
+                else:
+                    images.append(item)
             
-            if not asset_data: return
+            if not videos and not images: return
             
-            # 4. Sync to Website Feed (Pulse) - Use first asset as cover
-            if asset_data:
-                insert_pulse_to_supabase(
-                    project_name="Lanna Whispers",
-                    action_label="Collection",
-                    asset_url=asset_data[0]["url"],
-                    channel_id="LANNA",
-                    is_social=True
-                )
-
-            # 5. Dispatch to Buffer
+            # 4. Dispatch Groups Separately (Buffer Limitation: No Mixed Carousels)
             folder_name = os.path.basename(folder_path)
-            msg = f"◈ LANNA WHISPERS: {folder_name} (Collection) ◈"
-            success = broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=asset_data, post_type="GRID", bypass_quota=True)
             
-            if success:
-                # 6. Update Quota
-                quota_data["weekly_lanna_carousel_sent"] = current_week
-                with open(QUOTA_FILE, 'w') as f:
-                    json.dump(quota_data, f)
-                    
-                log_msg(f">>> [CAROUSEL SUCCESS] {folder_name} live on Lanna Whispers and Website Feed.")
-            else:
-                log_msg(f">>> [CAROUSEL ERROR] Buffer dispatch failed for {folder_name}.")
+            # DISPATCH VIDEOS
+            if videos:
+                log_msg(f">>> [CAROUSEL] Dispatching {len(videos)} videos from {folder_name}...")
+                v_msg = f"◈ LANNA WHISPERS: {folder_name} (Collection - Videos) ◈"
+                insert_pulse_to_supabase("Lanna Whispers", "Collection (Videos)", videos[0]["url"], channel_id="LANNA", is_social=True)
+                broadcast_to_buffer(v_msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=videos, is_video=True, post_type="GRID", bypass_quota=True)
+            
+            # DISPATCH IMAGES
+            if images:
+                log_msg(f">>> [CAROUSEL] Dispatching {len(images)} images from {folder_name}...")
+                i_msg = f"◈ LANNA WHISPERS: {folder_name} (Collection - Photos) ◈"
+                insert_pulse_to_supabase("Lanna Whispers", "Collection (Photos)", images[0]["url"], channel_id="LANNA", is_social=True)
+                broadcast_to_buffer(i_msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=images, is_video=False, post_type="GRID", bypass_quota=True)
+            
+            # 6. Update Quota
+            quota_data["weekly_lanna_carousel_sent"] = current_week
+            with open(QUOTA_FILE, 'w') as f:
+                json.dump(quota_data, f)
+                
+            log_msg(f">>> [CAROUSEL SUCCESS] {folder_name} processing complete.")
             
         except Exception as e:
             log_msg(f"[CAROUSEL ERROR] {e}")
