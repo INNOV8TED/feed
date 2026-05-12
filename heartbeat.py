@@ -259,8 +259,9 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
             log_msg(f"◈ [QUOTA] Buffer queue for {post_type} ({profile_id[-4:]}) is sufficiently filled (Today+Tomorrow).")
             return
             
-        # Mark as sent
-        quota[today][profile_id][post_type] = 1
+        # Increment quota count
+        current_count = quota[today][profile_id].get(post_type, 0)
+        quota[today][profile_id][post_type] = current_count + 1
         with open(QUOTA_FILE, 'w') as f:
             json.dump(quota, f)
     except Exception as e:
@@ -435,8 +436,14 @@ def generate_creative_title(filename):
     try:
         # Clean the filename
         clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
-        if len(clean_name) > 30 and " " in clean_name: # Already looks like a title
-             return clean_name.title()
+        
+        # Remove common system patterns (dates, hex codes, keywords)
+        import re
+        stripped = re.sub(r'\d+', '', clean_name).strip()
+        if len(stripped) < 3: # Mostly numbers/noise
+             pass # Force AI help
+             
+        log_msg(f"◈ [AI] Requesting title for: {clean_name}")
              
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
@@ -1807,6 +1814,7 @@ if __name__ == "__main__":
                         if files:
                             mock_event = type('obj', (object,), {'src_path': os.path.join(root, files[0]), 'is_directory': False})
                             event_handler.process_event(mock_event)
+                            time.sleep(2) # Prevent flood
                             continue # Processed the whole folder as a carousel
                     
                     for f in files:
@@ -1815,6 +1823,7 @@ if __name__ == "__main__":
                             path = os.path.join(root, f)
                             mock_event = type('obj', (object,), {'src_path': path, 'is_directory': False})
                             event_handler.process_event(mock_event)
+                            time.sleep(2) # Prevent flood
             
             observer = Observer()
             observer.schedule(event_handler, WATCH_PATH, recursive=True)
