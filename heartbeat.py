@@ -953,11 +953,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                         action_label = f"◈ MEMORIES: {creative_label} ◈"
                 elif "BLUE" in path_upper:
                     action_label = f"◈ BLUE: {creative_label} ◈"
+                elif "LABS" in path_upper:
+                    action_label = f"◈ LABS: {creative_label} ◈"
                 elif "LANNA" in path_upper:
                     action_label = f"◈ LANNA WHISPERS: {creative_label} ◈"
                 else:
                     action_label = f"◈ STUDIO BROADCAST: {creative_label} ◈"
-                    except: file_index = None
 
                     # WEEKLY & SEQUENTIAL QUOTA CHECK
                     current_week = datetime.datetime.now().strftime('%Y-%W')
@@ -977,38 +978,6 @@ class HeartbeatHandler(FileSystemEventHandler):
                     if file_index is not None and file_index != last_index + 1:
                         log_msg(f"◈ [QUOTA] Memory #{file_index} is out of sequence. Next expected: #{last_index + 1}")
                         return
-                elif "BLUE" in path_upper:
-                    action_label = f"◈ BLUE: {clean_name}"
-                    
-                    # WEEKLY QUOTA CHECK
-                    current_week = datetime.datetime.now().strftime('%Y-%W')
-                    quota_data = {}
-                    if os.path.exists(QUOTA_FILE):
-                        try:
-                            with open(QUOTA_FILE, 'r') as f:
-                                quota_data = json.load(f)
-                        except: pass
-                    
-                    if quota_data.get("weekly_blue_sent") == current_week:
-                        log_msg(f"◈ [QUOTA] Weekly Blue release already sent for week {current_week}. Skipping {os.path.basename(file_path)}")
-                        return
-                elif "LABS" in path_upper:
-                    action_label = f"◈ LABS: {clean_name}"
-                    
-                    # WEEKLY QUOTA CHECK
-                    current_week = datetime.datetime.now().strftime('%Y-%W')
-                    quota_data = {}
-                    if os.path.exists(QUOTA_FILE):
-                        try:
-                            with open(QUOTA_FILE, 'r') as f:
-                                quota_data = json.load(f)
-                        except: pass
-                    
-                    if quota_data.get("weekly_labs_sent") == current_week:
-                        log_msg(f"◈ [QUOTA] Weekly Labs release already sent for week {current_week}. Skipping {os.path.basename(file_path)}")
-                        return
-                else:
-                    action_label = clean_name
 
             software_map = {
                 ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
@@ -1200,16 +1169,17 @@ class HeartbeatHandler(FileSystemEventHandler):
                 log_msg(">>> [SYNC ERROR] Insert failed.")
 
             if "MEMORIES" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "LANNA" in path_upper:
-                # SPECIALIZED BROADCAST (Main Feed, Once a Week)
-                log_msg(f">>> [SOCIAL RELEASE] Dispatching weekly pulse to Buffer...")
+                # SPECIALIZED BROADCAST
+                log_msg(f">>> [SOCIAL RELEASE] Dispatching pulse to Buffer...")
                 
-                # Update weekly quota (before broadcast to ensure lock)
+                # Update daily/weekly quota
                 try:
                     quota_data = {}
                     if os.path.exists(QUOTA_FILE):
                         with open(QUOTA_FILE, 'r') as f:
                             quota_data = json.load(f)
                     
+                    today = datetime.datetime.now().strftime('%Y-%m-%d')
                     current_week = datetime.datetime.now().strftime('%Y-%W')
                     
                     if "MEMORIES" in path_upper:
@@ -1222,50 +1192,28 @@ class HeartbeatHandler(FileSystemEventHandler):
                             if match:
                                 quota_data["last_memory_index"] = int(match.group(1))
                         except: pass
-                    elif "BLUE" in path_upper:
-                        quota_data["weekly_blue_sent"] = current_week
-                    elif "LABS" in path_upper:
-                        quota_data["weekly_labs_sent"] = current_week
-
+                    
                     with open(QUOTA_FILE, 'w') as f:
                         json.dump(quota_data, f)
                 except: pass
 
-                # Buffer Dispatch (Main Grid Post) - BYPASS DAILY QUOTA for weekly special
+                # Buffer Dispatch
                 msg = f"{action_label}"
                 asset_is_video = asset_url.lower().endswith(('.mp4', '.mov'))
                 
                 if "MEMORIES" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
-                    if is_audio:
-                        width, height = 1080, 1920
-                    else:
-                        width, height = get_video_dimensions(file_path)
-                        
-                    is_vertical = height > width
-                    is_square = abs(width - height) < (width * 0.1)
-                    
-                    if is_vertical:
-                        # 1. YouTube Blue (Shorts)
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_data], is_video=True, post_type="REEL", bypass_quota=True, platform="youtube")
-                        # 2. Instagram Main (Reels)
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_data], is_video=True, post_type="REEL", bypass_quota=True, platform="instagram")
-                    elif is_square:
-                        # 1. Instagram Main (Grid Post)
-                        thumb = generate_and_upload_thumbnail(active_source) if asset_is_video else None
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=asset_is_video, post_type="GRID", bypass_quota=True, platform="instagram")
-                elif "LABS" in path_upper:
-                    # LABS SPECIAL ROUTING (Instagram Only)
                     width, height = get_video_dimensions(file_path)
                     is_vertical = height > width
-                    
-                    if is_vertical:
-                        target_type = "REEL" if is_video else "STORY"
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=target_type, bypass_quota=True)
-                    else:
-                        # Square/Horizontal
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type="GRID", bypass_quota=True)
+                    target_type = "REEL" if is_vertical else "GRID"
+                    thumb = generate_and_upload_thumbnail(active_source) if is_video else None
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type=target_type, bypass_quota=False)
+                elif "LABS" in path_upper:
+                    width, height = get_video_dimensions(file_path)
+                    is_vertical = height > width
+                    target_type = "REEL" if is_vertical else "GRID"
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=target_type, bypass_quota=False)
                 elif "LANNA" in path_upper:
                     # LANNA SPECIAL ROUTING (Daily Quota applies)
                     width, height = get_video_dimensions(file_path)
