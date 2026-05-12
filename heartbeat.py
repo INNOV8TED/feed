@@ -865,21 +865,33 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 2. CAPTURE VISION / VIDEO / AUDIO / IMAGE (Synchronous)
             asset_url = ""
             asset_file = None
+            is_video = ext in ['.mp4', '.mov']
+            is_audio = ext in ['.wav', '.mp3']
+            is_image = ext in ['.jpg', '.jpeg', '.png']
+            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
+
+            # --- OPTIMIZATION PASS (Social Only) ---
+            active_source = file_path
+            is_temp_optimized = False
+            if is_social_folder:
+                optimized = optimize_media(file_path)
+                if optimized != file_path:
+                    active_source = optimized
+                    is_temp_optimized = True
+
             if is_video:
-                log_msg(f">>> [VIDEO] Extracting highlight from {os.path.basename(file_path)}...")
-                asset_file = extract_random_clip(file_path)
+                log_msg(f">>> [VIDEO] Extracting highlight from {os.path.basename(active_source)}...")
+                asset_file = extract_random_clip(active_source)
             elif is_audio:
-                log_msg(f">>> [AUDIO] Generating visualizer for {os.path.basename(file_path)}...")
-                asset_file = generate_audio_visualizer(file_path)
+                log_msg(f">>> [AUDIO] Generating visualizer for {os.path.basename(active_source)}...")
+                asset_file = generate_audio_visualizer(active_source)
             elif is_image:
-                # Use the saved image directly!
-                log_msg(f">>> [IMAGE] Using saved file as pulse asset: {os.path.basename(file_path)}")
+                log_msg(f">>> [IMAGE] Preparing pulse asset: {os.path.basename(active_source)}")
                 try:
-                    temp_asset = f"image_pulse_{int(time.time())}{ext}"
+                    temp_asset = f"image_pulse_{int(time.time())}{os.path.splitext(active_source)[1]}"
                     import shutil
-                    # Wait a bit for Photoshop to release the file if needed
                     time.sleep(1)
-                    shutil.copy2(file_path, temp_asset)
+                    shutil.copy2(active_source, temp_asset)
                     asset_file = temp_asset
                 except Exception as e:
                     log_msg(f"[IMAGE COPY ERROR] {e}")
@@ -902,13 +914,13 @@ class HeartbeatHandler(FileSystemEventHandler):
                         )
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                         
-                        # 2nd Upload for Social (Full Length for Buffer)
-                        full_asset_url = asset_url # Default
-                        if is_social_folder and is_video:
+                        # 2nd Upload for Social (Using optimized version if available)
+                        full_asset_url = asset_url 
+                        if is_social_folder:
                             try:
-                                log_msg(f">>> [SOCIAL] Uploading full-length version for Buffer...")
-                                full_storage_path = f"social/{int(time.time())}_full{file_ext}"
-                                with open(file_path, 'rb') as f_full:
+                                log_msg(f">>> [SOCIAL] Uploading optimized source for Buffer...")
+                                full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(active_source)[1]}"
+                                with open(active_source, 'rb') as f_full:
                                     supabase.storage.from_('studio-assets').upload(
                                         full_storage_path, f_full.read(),
                                         file_options={"content-type": content_type}
@@ -919,6 +931,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                     
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
+
+            # CLEANUP OPTIMIZED TEMP
+            if is_temp_optimized and os.path.exists(active_source):
+                try: os.remove(active_source)
+                except: pass
 
             # 3. CHANNEL IDENTIFICATION (Hierarchical Brand Check)
             channel_id = "INNOV8"
@@ -1349,6 +1366,49 @@ def generate_visual_caption(file_path):
     except Exception as e:
         log_msg(f"[AI CAPTION ERROR] {e}")
         return None
+
+def optimize_media(file_path):
+    """Optimizes media for web/social (compression, resizing, transcoding)."""
+    try:
+        ext = os.path.splitext(file_path)[1].lower().strip()
+        is_vid = ext in ['.mp4', '.mov']
+        is_img = ext in ['.jpg', '.jpeg', '.png']
+        
+        if not is_vid and not is_img: return file_path
+        
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        output_file = os.path.join(base_dir, f"optimized_{int(time.time())}{ext if is_vid else '.jpg'}")
+        
+        if is_vid:
+            log_msg(f">>> [OPTIMIZE] Transcoding video for web: {os.path.basename(file_path)}")
+            # Resize to 1080p max, CRF 28 (Good balance), AAC Audio
+            # We use force_original_aspect_ratio to maintain vertical/square/etc
+            cmd = [
+                'ffmpeg', '-y', '-i', file_path,
+                '-vf', "scale='min(1080,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease,pad='ceil(iw/2)*2':'ceil(ih/2)*2'",
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '28',
+                '-c:a', 'aac', '-b:a', '128k',
+                '-movflags', '+faststart',
+                output_file
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            log_msg(f">>> [OPTIMIZE] Compressing image: {os.path.basename(file_path)}")
+            # Resize to 1920px max, 80% quality
+            cmd = [
+                'ffmpeg', '-y', '-i', file_path,
+                '-vf', "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease",
+                '-q:v', '4', # Roughly 80% quality
+                output_file
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+        if os.path.exists(output_file):
+            return output_file
+        return file_path
+    except Exception as e:
+        log_msg(f"[OPTIMIZE ERROR] {e}")
+        return file_path
 
 def capture_screenshot():
     """Captures the current workstation screen as a 'Live Interface' snapshot."""
