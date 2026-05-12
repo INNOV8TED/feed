@@ -242,31 +242,6 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
         log_msg("Buffer Profile ID missing. Skipping broadcast.")
         return
 
-    # --- CURATED SCHEDULE: 1 REEL AND 1 GRID POST PER CHANNEL PER DAY ---
-    try:
-        today = datetime.datetime.now().strftime('%Y-%m-%d')
-        quota = {}
-        if os.path.exists(QUOTA_FILE):
-            with open(QUOTA_FILE, 'r') as f:
-                quota = json.load(f)
-        
-        # Structure: quota[date][profile_id][post_type] = 1
-        if today not in quota: quota[today] = {}
-        if profile_id not in quota[today]: quota[today][profile_id] = {}
-        
-        # INCREASED QUOTA: 2 items per type (allows for Today + Tomorrow queue depth)
-        if not bypass_quota and quota[today][profile_id].get(post_type, 0) >= 2:
-            log_msg(f"◈ [QUOTA] Buffer queue for {post_type} ({profile_id[-4:]}) is sufficiently filled (Today+Tomorrow).")
-            return
-            
-        # Increment quota count
-        current_count = quota[today][profile_id].get(post_type, 0)
-        quota[today][profile_id][post_type] = current_count + 1
-        with open(QUOTA_FILE, 'w') as f:
-            json.dump(quota, f)
-    except Exception as e:
-        log_msg(f"[QUOTA ERROR] {e}")
-
     if not BUFFER_TOKEN or "your_buffer" in BUFFER_TOKEN:
         log_msg("Buffer token missing. Skipping broadcast.")
         return
@@ -1196,12 +1171,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                             with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
                         except: pass
                     
-                    # Strict 1-per-type AND Total daily lock
+                    # Strict 1-per-type AND Total daily lock (Optimized for Buffer Free Account: 2 slots)
                     channel_daily = quota_data.get(today, {}).get(buffer_profile, {})
                     total_today = sum(channel_daily.values())
                     
-                    # Blue is limited to 1 total per day, others 3
-                    max_total = 1 if channel_id == "BLUE" else 3
+                    # Blue is limited to 1 total per day, others 2 (Matching Buffer Free Slots)
+                    max_total = 1 if channel_id == "BLUE" else 2
                     
                     if total_today >= max_total:
                         log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping.")
