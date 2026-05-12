@@ -464,7 +464,8 @@ class HeartbeatHandler(FileSystemEventHandler):
 
     def process_event(self, event):
         try:
-            file_path = event.src_path
+            # CORRECT PATH DETECTION (Handle Moves)
+            file_path = event.dest_path if hasattr(event, 'dest_path') else event.src_path
             ext = os.path.splitext(file_path)[1].lower().strip()
                 
             # DEEP DEBUG
@@ -1176,7 +1177,9 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
                 media_type = "Sound" if is_audio else "Visual"
                 msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
-                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=asset_url, is_video=True, post_type=target_type)
+                # GENERATE THUMBNAIL FOR PULSE
+                thumb = generate_and_upload_thumbnail(asset_file) if (is_video or is_audio) else None
+                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[{"url": asset_url, "thumbnail": thumb}] if thumb else [asset_url], is_video=True, post_type=target_type)
             else:
                 # GRID POST (SQUARE 1:1)
                 log_msg(f">>> [GRID] Generating square crop for {project_name}...")
@@ -1190,7 +1193,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                         grid_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
                     msg = f"◈ STUDIO PHASE: #{project_name} R&D active. #{software} development. feed.in-no-v8.com"
-                    broadcast_to_buffer(msg, profile_id=buffer_profile, asset_url=grid_url, is_video=False, post_type="GRID")
+                    broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[grid_url], is_video=False, post_type="GRID")
                     if os.path.exists(square_file): os.remove(square_file)
                 except Exception as e:
                     log_msg(f"[GRID SYNC ERROR] {e}")
@@ -1207,7 +1210,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                         story_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
                     
                     msg_story = f"◈ LIVE STUDIO PULSE: {project_name} ◈"
-                    broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_url=story_url, is_video=False, post_type="STORY")
+                    broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_urls=[story_url], is_video=False, post_type="STORY")
                     if os.path.exists(story_file): os.remove(story_file)
                 except Exception as e:
                     log_msg(f"[STORY SYNC ERROR] {e}")
