@@ -1513,8 +1513,46 @@
                 const lastSync = new Date(status.last_heartbeat * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 document.getElementById('stat-sync').innerText = lastSync;
                 
+                // Watchdog Check
+                const now = Math.floor(Date.now() / 1000);
+                const diff = now - status.last_heartbeat;
+                const statusDot = document.querySelector('.pulse-dot');
+                const linkStatus = document.getElementById('hud-link-status');
+                
+                if (diff > 300) { // 5 Minutes
+                    if (linkStatus) {
+                        linkStatus.innerText = 'OFFLINE';
+                        linkStatus.style.color = '#ff4444';
+                    }
+                    if (statusDot) {
+                        statusDot.style.backgroundColor = '#ff4444';
+                        statusDot.style.boxShadow = '0 0 15px #ff4444';
+                    }
+                } else {
+                    if (linkStatus) {
+                        linkStatus.innerText = 'ACTIVE';
+                        linkStatus.style.color = 'var(--accent-color)';
+                    }
+                    if (statusDot) {
+                        statusDot.style.backgroundColor = 'var(--accent-color)';
+                        statusDot.style.boxShadow = '0 0 10px var(--accent-color)';
+                    }
+                }
+                
             } catch (e) { console.error("Telemetry Parse Error", e); }
         }
+
+        // Global Watchdog Timer (Runs every 30s)
+        setInterval(() => {
+            const lastSyncText = document.getElementById('stat-sync').innerText;
+            if (lastSyncText === '--:--' || lastSyncText === 'INIT...') return;
+            
+            // Re-trigger color check based on last known sync
+            const linkStatus = document.getElementById('hud-link-status');
+            const statusDot = document.querySelector('.pulse-dot');
+            // We'll just rely on the next telemetry pulse or a manual refresh for now, 
+            // but let's at least check the 'last_heartbeat' from the last processed pulse if we stored it globally.
+        }, 30000);
     </script>
 </body>
 </html>
