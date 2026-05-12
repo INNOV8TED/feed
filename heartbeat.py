@@ -1196,12 +1196,15 @@ class HeartbeatHandler(FileSystemEventHandler):
                             with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
                         except: pass
                     
-                    # Strict 1-per-type AND 3-per-day total lock
+                    # Strict 1-per-type AND Total daily lock
                     channel_daily = quota_data.get(today, {}).get(buffer_profile, {})
                     total_today = sum(channel_daily.values())
                     
-                    if total_today >= 3:
-                        log_msg(f"◈ [QUOTA] {channel_id} total daily limit (3) reached. Skipping.")
+                    # Blue is limited to 1 total per day, others 3
+                    max_total = 1 if channel_id == "BLUE" else 3
+                    
+                    if total_today >= max_total:
+                        log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping.")
                         return
                         
                     if channel_daily.get(q_type, 0) >= 1:
