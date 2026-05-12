@@ -1697,23 +1697,28 @@ def process_backlog(handler):
     threading.Timer(3600, lambda: process_backlog(handler)).start()
 
 def check_inventory_levels():
-    """Performs a specific diagnostic of social content depth and alerts if tomorrow's queue is at risk."""
+    """Performs a specific diagnostic at 9 PM local time and alerts if the buffer is low."""
     global last_inventory_alert_time
     try:
-        now = time.time()
-        # 12-hour cooldown to prevent spam, but still check twice a day
-        if now - last_inventory_alert_time < 43200: 
+        now_dt = datetime.datetime.now()
+        current_date = now_dt.strftime("%Y-%m-%d")
+        current_hour = now_dt.hour
+        
+        # Only fire between 9:00 PM and 9:59 PM
+        if current_hour != 21:
+            return
+
+        # Check if we've already sent the alert today
+        if last_inventory_alert_time == current_date:
             return
 
         quota_data = {}
         if os.path.exists(QUOTA_FILE):
-            with open(QUOTA_FILE, 'r') as f:
-                try:
-                    with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
-                except: pass
+            try:
+                with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+            except: pass
         
-        today = datetime.datetime.now().strftime("%Y-%m-%d")
-        daily_quota = quota_data.get(today, {})
+        daily_quota = quota_data.get(current_date, {})
         
         # Requirements map: {ProfileID: [Required Types]}
         requirements = {
@@ -1740,7 +1745,7 @@ def check_inventory_levels():
                         missing_reports.append(f"{channel_label} {q_type}")
         
         if missing_reports:
-            log_msg(f"◈ [INVENTORY] Missing: {', '.join(missing_reports)}")
+            log_msg(f"◈ [INVENTORY] Scheduled 9PM Diagnostic: Missing {', '.join(missing_reports)}")
             advice_msg = f"Diagnostic complete. To maintain a 24h buffer, please resupply: {', '.join(missing_reports)}."
             
             # Pulse to Website
@@ -1758,12 +1763,13 @@ def check_inventory_levels():
             # Send Email Alert
             send_email_alert(
                 subject="◈ STUDIO ALERT: Supply Chain Low",
-                message=f"Your social broadcast pipeline is running low on content. To maintain your 24-hour buffer for all channels, please replenish: <strong>{', '.join(missing_reports)}</strong>."
+                message=f"Your 9 PM inventory diagnostic is complete. To maintain your 24-hour buffer for tomorrow, please replenish: <strong>{', '.join(missing_reports)}</strong>."
             )
             
-            last_inventory_alert_time = now
+            last_inventory_alert_time = current_date
         else:
-            log_msg("◈ [INVENTORY] All queues healthy (1-day buffer active).")
+            log_msg("◈ [INVENTORY] 9PM Diagnostic: All queues healthy.")
+            last_inventory_alert_time = current_date # Still mark as checked today
             
     except Exception as e:
         log_msg(f"[INVENTORY DIAGNOSTIC ERROR] {e}")
