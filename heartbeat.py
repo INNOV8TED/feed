@@ -1410,6 +1410,46 @@ def optimize_media(file_path):
         log_msg(f"[OPTIMIZE ERROR] {e}")
         return file_path
 
+def sync_status_to_supabase():
+    """Syncs the current quota and queue status to a special system record in Supabase."""
+    try:
+        current_week = datetime.datetime.now().strftime('%Y-%W')
+        today = datetime.datetime.now().strftime('%Y-%m-%d')
+        
+        quota_data = {}
+        if os.path.exists(QUOTA_FILE):
+            with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+            
+        queue_counts = {
+            "posts": len(os.listdir(os.path.join(PENDING_DIR, "POSTS"))),
+            "carousels": len(os.listdir(os.path.join(PENDING_DIR, "CAROUSELS")))
+        }
+        
+        status_data = {
+            "quota": quota_data.get(today, {}),
+            "weekly": {
+                "lanna": quota_data.get("weekly_lanna_carousel_sent") == current_week,
+                "memory": quota_data.get("weekly_memory_sent") == current_week
+            },
+            "queue": queue_counts,
+            "last_heartbeat": int(time.time())
+        }
+        
+        # Use a special pulse for system status
+        insert_pulse_to_supabase(
+            project_name="[SYSTEM_STATUS]",
+            action_label="Telemetry Broadcast",
+            asset_url="",
+            mood="telemetry",
+            software="Watchdog Engine",
+            quote=json.dumps(status_data), # Store full JSON in quote
+            channel_id="SYSTEM",
+            is_milestone=False,
+            is_social=False
+        )
+    except Exception as e:
+        log_msg(f"[STATUS SYNC ERROR] {e}")
+
 def capture_screenshot():
     """Captures the current workstation screen as a 'Live Interface' snapshot."""
     try:
@@ -1505,6 +1545,7 @@ if __name__ == "__main__":
     # Initial Backlog Check
     event_handler = HeartbeatHandler()
     process_backlog(event_handler)
+    sync_status_to_supabase()
 
     while True:
         try:
@@ -1520,6 +1561,7 @@ if __name__ == "__main__":
                 if now % 120 < 1: # Capture every 2 mins
                     log_msg("◈ [STATUS] Heartbeat Active and Monitoring.")
                     process_backlog(event_handler)
+                    sync_status_to_supabase()
                     time.sleep(1) # Prevent double logging
                 time.sleep(1)
                 
