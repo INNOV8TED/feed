@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 import sys
 from openai import OpenAI
 import shutil
+import base64
 
 # Load environment variables with absolute path
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,8 +30,13 @@ BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
 BUFFER_PROFILE_ID_BLUE = os.environ.get("BUFFER_PROFILE_ID_BLUE")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# Initialize OpenAI Client (Deferred until logging is ready)
+# Initialize OpenAI Client
 openai_client = None
+if OPENAI_API_KEY:
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        print(f"OpenAI Init Error: {e}")
 
 # --- GLOBAL PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -753,9 +759,16 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 1. PREPARE METADATA
             mood = workflow['mood']
             quote = get_random_quote()
+            # Identify Action Label
+            action_label = workflow["label"]
             
-            action_label = workflow['label']
-            
+            # AI CAPTION UPGRADE (For Social/Lanna Posts)
+            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
+            if openai_client and (is_social_folder or "LANNA" in path_upper):
+                ai_caption = generate_visual_caption(file_path)
+                if ai_caption:
+                    action_label = ai_caption
+
             # FOLDER-SPECIFIC LOGIC (MEMORIES & SOCIAL)
             path_upper = file_path.upper()
             if "MEMORIES" in path_upper or "SOCIAL" in path_upper:
@@ -1288,6 +1301,53 @@ def extract_random_clip(video_path):
         return output_file
     except Exception as e:
         log_msg(f"[CLIP ERROR] {e}")
+        return None
+
+def generate_visual_caption(file_path):
+    """Uses GPT-4o to analyze the media and generate a descriptive caption."""
+    if not openai_client: return None
+    
+    try:
+        # 1. Prepare Image (If video, take a screenshot first)
+        temp_img = file_path
+        is_vid = file_path.lower().endswith(('.mp4', '.mov'))
+        
+        if is_vid:
+            temp_img = f"ai_temp_{int(time.time())}.jpg"
+            cmd = ['ffmpeg', '-y', '-i', file_path, '-ss', '00:00:01', '-vframes', '1', temp_img]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+        # 2. Encode to Base64
+        with open(temp_img, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        # 3. Call GPT-4o
+        log_msg(f">>> [AI] Analyzing visual context for {os.path.basename(file_path)}...")
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this studio work in 5-8 words for a professional social media feed. Focus on the mood and technical aspect. No hashtags. Example: 'Refining atmospheric lighting in the Lanna temple.'"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                        },
+                    ],
+                }
+            ],
+            max_tokens=50,
+        )
+        
+        caption = response.choices[0].message.content.strip().strip('"')
+        
+        # Cleanup
+        if is_vid and os.path.exists(temp_img): os.remove(temp_img)
+        
+        return caption
+    except Exception as e:
+        log_msg(f"[AI CAPTION ERROR] {e}")
         return None
 
 def capture_screenshot():
