@@ -1173,8 +1173,13 @@ class HeartbeatHandler(FileSystemEventHandler):
                             with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
                         except: pass
                     
-                    if not ("MEMORIES" in path_upper or "BLUE" in path_upper) and quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 2:
+                    if quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 2:
                         log_msg(f"◈ [QUOTA] Social buffer full for {channel_id} {q_type}. Skipping pulse.")
+                        return
+                    
+                    # SPECIAL CASE: YouTube (BLUE) ONLY supports videos
+                    if "BLUE" in path_upper and not is_video:
+                        log_msg(f"◈ [ROUTING] YouTube channel only supports videos. Skipping {os.path.basename(file_path)}")
                         return
                     
                     # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
@@ -1207,7 +1212,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 if "MEMORIES" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_data], is_video=is_video, post_type=q_type, bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": full_asset_url, "thumbnail": social_thumb}], is_video=is_video, post_type="REEL", bypass_quota=True, platform="youtube")
                 elif "LABS" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 elif "LANNA" in path_upper:
