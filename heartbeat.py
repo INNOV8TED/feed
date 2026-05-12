@@ -1649,8 +1649,8 @@ def process_backlog(handler):
                 shutil.move(post_path, dest)
                 break
         
-        # 3. SMART INVENTORY CHECK (No Spam)
-        check_inventory_levels()
+        # 3. SMART INVENTORY CHECK (Silenced for now to prevent startup spam)
+        # check_inventory_levels()
 
     except Exception as e:
         log_msg(f"[BACKLOG ERROR] {e}")
