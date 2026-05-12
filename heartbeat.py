@@ -410,6 +410,9 @@ else:
     log_msg("◈ [AI SYSTEM] Warning: OPENAI_API_KEY not found in .env")
 
 class HeartbeatHandler(FileSystemEventHandler):
+    def __init__(self):
+        self.is_primed = False
+
     def on_modified(self, event):
         if event.is_directory: return
         path = event.src_path.lower()
@@ -422,7 +425,8 @@ class HeartbeatHandler(FileSystemEventHandler):
         ext = os.path.splitext(path)[1].lower().strip()
         if ext in IGNORE_FILES or ".git" in path:
             return
-        
+            
+        log_msg(f"[WATCHER DEBUG] Event Modified: {event.src_path}")
         log_msg(f"[WATCHER] Change Detected: {basename}")
         self.process_event(event)
         
@@ -439,6 +443,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         if ext in IGNORE_FILES or ".git" in path:
             return
         
+        log_msg(f"[WATCHER DEBUG] Event Created: {event.src_path}")
         log_msg(f"[WATCHER] Created: {basename}")
         self.process_event(event)
 
@@ -515,6 +520,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                     try:
                         if not os.path.exists(file_path): return
                         current_size = os.path.getsize(file_path)
+                        log_msg(f"[STABILITY DEBUG] Checking {os.path.basename(file_path)}: Size={current_size}, StableCount={stable_count}")
                         
                         if current_size == last_size and current_size > 0:
                             stable_count += 1
@@ -555,15 +561,15 @@ class HeartbeatHandler(FileSystemEventHandler):
                     # Use the most recent of modification or creation time
                     freshness = time.time() - max(mtime, ctime)
                     
-                    # ASSET LENIENCY: Allow images/videos even if old, unless they are EXTREMELY old (1 week)
+                    # ASSET LENIENCY: Allow images/videos even if old, unless they are EXTREMELY old (60 days)
                     # OR if they are in the "RANDOM" or "MEMORIES" or "SOCIAL" folder (unlimited age)
                     is_asset = ext in [".png", ".jpg", ".jpeg", ".mp4", ".mov", ".wav", ".mp3"]
                     is_special_folder = any(x in file_path.upper() for x in ["RANDOM", "MEMORIES", "SOCIAL", "LANNA"])
                     
-                    if is_special_folder:
+                    if is_special_folder or self.is_primed:
                         threshold = 315360000.0 # 10 years (effectively unlimited)
                     else:
-                        threshold = 604800.0 if is_asset else 120.0 
+                        threshold = 5184000.0 if is_asset else 120.0 # 60 days for assets, 2 mins for projects
                     
                     if freshness > threshold:
                         log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(freshness)}s).")
@@ -706,15 +712,20 @@ class HeartbeatHandler(FileSystemEventHandler):
         global last_broadcast_time
         try:
             current_time = time.time()
+            log_msg(f"[DISPATCH DEBUG] Starting dispatch for {os.path.basename(file_path)}")
             
             # 1. DUPLICATION GUARD (Session Lock)
-            # Prevent re-pulsing the same file within 10 minutes unless significantly modified
             if file_path in recent_pulse_lock:
                 if current_time - recent_pulse_lock[file_path] < 600: # 10 Minute Lock
+                    log_msg(f"[DISPATCH DEBUG] Duplicate suppressed: {os.path.basename(file_path)}")
                     return
             recent_pulse_lock[file_path] = current_time
             
             ext = os.path.splitext(file_path)[1].lower().strip()
+            is_video = ext in [".mp4", ".mov"]
+            is_audio = ext in [".mp3", ".wav"]
+            
+            log_msg(f"[DISPATCH DEBUG] Type identified - Video: {is_video}, Audio: {is_audio}")
             
             # Identify Quality
             is_video = (ext == ".mp4" or ext == ".mov")
@@ -726,7 +737,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             # Only pulse videos/audio if they are in an output-related folder
             # This prevents stock assets, footage, and source files from triggering pulses.
             path_upper = file_path.upper()
-            output_keywords = ["EXPORTS", "MASTERS", "FINAL", "SOCIAL", "MEMORIES", "OUTPUT", "RENDER", "DELIVERABLES", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]"]
+            output_keywords = ["EXPORTS", "MASTERS", "FINAL", "SOCIAL", "MEMORIES", "OUTPUT", "RENDER", "DELIVERABLES", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]", "PROCESSED", "RELEASED", "PODCAST", "EPISODES"]
             asset_keywords = ["ASSETS", "FOOTAGE", "STOCK", "SOURCE", "RAW", "INGEST", "MATERIAL"]
             
             if is_video or is_audio:
@@ -968,9 +979,9 @@ class HeartbeatHandler(FileSystemEventHandler):
 
                                 full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(actual_social_source)[1]}"
                                 
-                                # GENERATE THUMBNAIL FOR AUDIO SOCIAL
+                                # GENERATE THUMBNAIL FOR SOCIAL (Video & Audio)
                                 social_thumb = None
-                                if is_audio:
+                                if is_audio or is_video:
                                     social_thumb = generate_and_upload_thumbnail(actual_social_source)
 
                                 with open(actual_social_source, 'rb') as f_full:
@@ -1596,6 +1607,7 @@ if __name__ == "__main__":
     log_msg(f"Initializing Studio Pulse Vision Pipeline... (PID: {os.getpid()})")
     log_msg(f"Watch Path: {WATCH_PATH}")
     load_cache()
+    log_msg(f"[STARTUP] Absolute Watch Path: {os.path.abspath(WATCH_PATH)}")
     for root, dirs, files in os.walk(WATCH_PATH):
         if any(ignore in root for ignore in IGNORE_FOLDERS): continue
         for f in files:
@@ -1623,6 +1635,7 @@ if __name__ == "__main__":
             observer = Observer()
             observer.schedule(event_handler, WATCH_PATH, recursive=True)
             observer.start()
+            event_handler.is_primed = True
             log_msg(f"Monitoring {WATCH_PATH} with Buffer integration and Echo Fix (Active)...")
             
             while observer.is_alive():
