@@ -88,8 +88,9 @@ load_cache()
 
 # ECHO-ZERO LOCK
 last_broadcast_time = 0
-BROADCAST_LOCK_PERIOD = 20  # Increased for stability
+BROADCAST_LOCK_PERIOD = 20
 pending_timers = {}
+recent_pulse_lock = {} # {path: timestamp} to prevent duplicates
 
 # --- SINGLETON LOCK ---
 import msvcrt
@@ -371,7 +372,7 @@ def get_video_dimensions(path):
         data = json.loads(res.stdout)
         return int(data['streams'][0]['width']), int(data['streams'][0]['height'])
     except:
-        return 1920, 1080 # Default to vertical
+        return 1080, 1920 # Default to vertical (Shorts/Reels)
 
 # --- SUPABASE HARDENING ---
 def get_supabase_client():
@@ -701,10 +702,18 @@ class HeartbeatHandler(FileSystemEventHandler):
             log_msg(f"[CAROUSEL ERROR] {e}")
 
     def dispatch_heartbeat(self, project_name, workflow, file_path):
-        """The actual logic that sends data to Supabase, after debouncing."""
+        """The actual logic that sends data to Supabase, after debounces."""
         global last_broadcast_time
         try:
             current_time = time.time()
+            
+            # 1. DUPLICATION GUARD (Session Lock)
+            # Prevent re-pulsing the same file within 10 minutes unless significantly modified
+            if file_path in recent_pulse_lock:
+                if current_time - recent_pulse_lock[file_path] < 600: # 10 Minute Lock
+                    return
+            recent_pulse_lock[file_path] = current_time
+            
             ext = os.path.splitext(file_path)[1].lower().strip()
             
             # Identify Quality
@@ -794,7 +803,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             # AI CAPTION UPGRADE (For Social/Lanna Posts)
             is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
-            if openai_client and (is_social_folder or "LANNA" in path_upper):
+            if openai_client and (is_social_folder or "LANNA" in path_upper) and not is_audio:
                 ai_caption = generate_visual_caption(file_path)
                 if ai_caption:
                     action_label = ai_caption
@@ -958,12 +967,24 @@ class HeartbeatHandler(FileSystemEventHandler):
                                     is_temp_full_audio = True
 
                                 full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(actual_social_source)[1]}"
+                                
+                                # GENERATE THUMBNAIL FOR AUDIO SOCIAL
+                                social_thumb = None
+                                if is_audio:
+                                    social_thumb = generate_and_upload_thumbnail(actual_social_source)
+
                                 with open(actual_social_source, 'rb') as f_full:
                                     supabase.storage.from_('studio-assets').upload(
                                         full_storage_path, f_full.read(),
                                         file_options={"content-type": content_type if not is_audio else "video/mp4"}
                                     )
                                 full_asset_url = supabase.storage.from_('studio-assets').get_public_url(full_storage_path)
+                                
+                                # Wrap in dict for Buffer if we have a thumb
+                                if social_thumb:
+                                    full_asset_data = {"url": full_asset_url, "thumbnail": social_thumb}
+                                else:
+                                    full_asset_data = full_asset_url
                                 
                                 # Cleanup temp full audio visualizer
                                 if is_temp_full_audio and os.path.exists(actual_social_source):
@@ -1082,17 +1103,19 @@ class HeartbeatHandler(FileSystemEventHandler):
                 if "MEMORIES" in path_upper:
                     broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
-                    # BLUE SPECIAL ROUTING
-                    width, height = get_video_dimensions(file_path)
+                    if is_audio:
+                        width, height = 1080, 1920
+                    else:
+                        width, height = get_video_dimensions(file_path)
+                        
                     is_vertical = height > width
                     is_square = abs(width - height) < (width * 0.1)
                     
                     if is_vertical:
                         # 1. YouTube Blue (Shorts)
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_url], is_video=True, post_type="REEL", bypass_quota=True, platform="youtube")
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_data], is_video=True, post_type="REEL", bypass_quota=True, platform="youtube")
                         # 2. Instagram Main (Reels)
-                        thumb = generate_and_upload_thumbnail(active_source) if asset_is_video else None
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=True, post_type="REEL", bypass_quota=True, platform="instagram")
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_data], is_video=True, post_type="REEL", bypass_quota=True, platform="instagram")
                     elif is_square:
                         # 1. Instagram Main (Grid Post)
                         thumb = generate_and_upload_thumbnail(active_source) if asset_is_video else None
