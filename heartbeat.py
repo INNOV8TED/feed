@@ -1148,92 +1148,58 @@ class HeartbeatHandler(FileSystemEventHandler):
                             return
                 except: pass
 
-            # 4. DISPATCH FULL PULSE TO SUPABASE (CHANNEL-AWARE)
-            status_text = "Social active." if is_social_folder else "Neural link active."
-            # Data structure: mood|status|url|software|quote|channel_id
-            data = {
-                "project_name": project_name,
-                "action_label": action_label,
-                "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}|{channel_id}", 
-                "source": "Windows-Workstation",
-                "is_milestone": (is_video or is_audio or software == "Premiere Pro" or software == "Photoshop")
-            }
-            
-            log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software} (Channel: {channel_id})...")
-            if insert_pulse_to_supabase(
-                project_name=project_name,
-                action_label=action_label,
-                asset_url=asset_url,
-                mood=mood,
-                software=software,
-                quote=quote,
-                channel_id=channel_id,
-                is_milestone=(is_video or is_audio or software == "Premiere Pro" or software == "Photoshop"),
-                is_social=is_social_folder
-            ):
-                log_msg(f">>> [SYNC] SUCCESS! Vision Linked: {asset_url}")
-            else:
-                log_msg(">>> [SYNC ERROR] Insert failed.")
-
-            if "MEMORIES" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "LANNA" in path_upper:
-                # SPECIALIZED BROADCAST
-                log_msg(f">>> [SOCIAL RELEASE] Dispatching pulse to Buffer...")
+            # 4. SOCIAL QUOTA & BROADCAST GUARD
+            if is_social_folder or "LANNA" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "MEMORIES" in path_upper:
+                today = datetime.datetime.now().strftime('%Y-%m-%d')
+                width, height = get_video_dimensions(file_path)
+                is_vertical = height > width
+                q_type = ("REEL" if is_video else "STORY") if is_vertical else "GRID"
                 
-                # Update daily/weekly quota
+                # SPECIAL CASE: MEMORIES are always GRID
+                if "MEMORIES" in path_upper: q_type = "GRID"
+                
+                quota_data = {}
+                if os.path.exists(QUOTA_FILE):
+                    try:
+                        with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+                    except: pass
+                
+                # If quota is full, STOP HERE (Silent skip to prevent flood)
+                if not ("MEMORIES" in path_upper or "BLUE" in path_upper) and quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 2:
+                    log_msg(f"◈ [QUOTA] Social buffer full for {channel_id} {q_type}. Skipping pulse.")
+                    return
+                
+                # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
+                log_msg(f">>> [SOCIAL] Verified Quota. Dispatching pulse: {action_label}")
+                insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
+                
+                # 6. UPDATE INTERNAL QUOTA
                 try:
-                    quota_data = {}
-                    if os.path.exists(QUOTA_FILE):
-                        with open(QUOTA_FILE, 'r') as f:
-                            quota_data = json.load(f)
+                    if today not in quota_data: quota_data[today] = {}
+                    if buffer_profile not in quota_data[today]: quota_data[today][buffer_profile] = {}
+                    quota_data[today][buffer_profile][q_type] = quota_data[today][buffer_profile].get(q_type, 0) + 1
                     
-                    today = datetime.datetime.now().strftime('%Y-%m-%d')
-                    current_week = datetime.datetime.now().strftime('%Y-%W')
-                    
+                    # Memories Weekly Sequence
                     if "MEMORIES" in path_upper:
+                        import re
+                        current_week = datetime.datetime.now().strftime('%Y-%W')
                         quota_data["weekly_memory_sent"] = current_week
-                        # Update sequence index
-                        try:
-                            import re
-                            filename = os.path.splitext(os.path.basename(file_path))[0]
-                            match = re.search(r'^(\d+)', filename)
-                            if match:
-                                quota_data["last_memory_index"] = int(match.group(1))
-                        except: pass
-                    
+                        match = re.search(r'^(\d+)', filename)
+                        if match: quota_data["last_memory_index"] = int(match.group(1))
+
                     with open(QUOTA_FILE, 'w') as f:
                         json.dump(quota_data, f)
                 except: pass
 
-                # Buffer Dispatch
-                msg = f"{action_label}"
-                asset_is_video = asset_url.lower().endswith(('.mp4', '.mov'))
-                
+                # 7. BUFFER DISPATCH
                 if "MEMORIES" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
-                    width, height = get_video_dimensions(file_path)
-                    is_vertical = height > width
-                    target_type = "REEL" if is_vertical else "GRID"
-                    thumb = generate_and_upload_thumbnail(active_source) if is_video else None
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type=target_type, bypass_quota=False)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_data], is_video=is_video, post_type=q_type, bypass_quota=True)
                 elif "LABS" in path_upper:
-                    width, height = get_video_dimensions(file_path)
-                    is_vertical = height > width
-                    target_type = "REEL" if is_vertical else "GRID"
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=target_type, bypass_quota=False)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 elif "LANNA" in path_upper:
-                    # LANNA SPECIAL ROUTING (Daily Quota applies)
-                    width, height = get_video_dimensions(file_path)
-                    is_vertical = height > width
-                    
-                    if is_vertical:
-                        target_type = "REEL" if is_video else "STORY"
-                        thumb = generate_and_upload_thumbnail(active_source) if is_video else None
-                        broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type=target_type, bypass_quota=False)
-                    else:
-                        # Square/Horizontal
-                        thumb = generate_and_upload_thumbnail(active_source) if is_video else None
-                        broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type="GRID", bypass_quota=False)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_data], is_video=is_video, post_type=q_type, bypass_quota=True)
                 
             elif is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
