@@ -68,19 +68,29 @@ last_size_cache = {}
 fingerprint_cache = {} # Tracks (size, ctime) to prevent renames from pulsing
 
 def load_cache():
-    global last_size_cache
+    global last_size_cache, fingerprint_cache
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, 'r') as f:
-                last_size_cache = json.load(f)
-            log_msg(f"◈ [CACHE] Loaded {len(last_size_cache)} project states.")
+                data = json.load(f)
+                if isinstance(data, dict) and "size_cache" in data:
+                    last_size_cache = data.get("size_cache", {})
+                    fingerprint_cache = data.get("fingerprints", {})
+                else:
+                    last_size_cache = data # Legacy support
+            log_msg(f"◈ [CACHE] Loaded {len(last_size_cache)} states and {len(fingerprint_cache)} fingerprints.")
         except:
             last_size_cache = {}
+            fingerprint_cache = {}
 
 def save_cache():
     try:
+        data = {
+            "size_cache": last_size_cache,
+            "fingerprints": fingerprint_cache
+        }
         with open(CACHE_FILE, 'w') as f:
-            json.dump(last_size_cache, f)
+            json.dump(data, f)
     except:
         pass
 
@@ -1731,6 +1741,33 @@ if __name__ == "__main__":
     while True:
         try:
             event_handler = HeartbeatHandler()
+            
+            # PROACTIVE STARTUP SCAN: Ingest existing social content
+            log_msg("◈ [STARTUP] Scanning for unsent social content...")
+            social_paths = [
+                os.path.join(WATCH_PATH, "SOCIAL"),
+                os.path.join(WATCH_PATH, "MEMORIES"),
+                os.path.join(WATCH_PATH, "LANNA")
+            ]
+            for s_path in social_paths:
+                if not os.path.exists(s_path): continue
+                for root, dirs, files in os.walk(s_path):
+                    # For carousels, we check the folder
+                    path_parts = root.replace("\\", "/").split("/")
+                    if "LANNA" in [p.upper() for p in path_parts] and os.path.basename(root).upper() != "LANNA":
+                        # It's a carousel folder. We'll simulate a change to one of its files to trigger detection
+                        if files:
+                            mock_event = type('obj', (object,), {'src_path': os.path.join(root, files[0]), 'is_directory': False})
+                            event_handler.process_event(mock_event)
+                            continue # Processed the whole folder as a carousel
+                    
+                    for f in files:
+                        ext = os.path.splitext(f)[1].lower().strip()
+                        if any(key in ext for key in WORKFLOW_MAP):
+                            path = os.path.join(root, f)
+                            mock_event = type('obj', (object,), {'src_path': path, 'is_directory': False})
+                            event_handler.process_event(mock_event)
+            
             observer = Observer()
             observer.schedule(event_handler, WATCH_PATH, recursive=True)
             observer.start()
