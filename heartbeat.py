@@ -409,6 +409,24 @@ if OPENAI_API_KEY:
 else:
     log_msg("◈ [AI SYSTEM] Warning: OPENAI_API_KEY not found in .env")
 
+def convert_image_to_video(image_path):
+    """Converts a static image into a 3-second MP4 video for carousel compatibility."""
+    try:
+        ts = int(time.time())
+        output_file = os.path.join(os.path.dirname(image_path), f"vid_{ts}_{random.randint(100,999)}.mp4")
+        # Create a 3s loop of the image. Scale to even dimensions for H.264
+        cmd = [
+            'ffmpeg', '-y', '-loop', '1', '-i', image_path, 
+            '-c:v', 'libx264', '-t', '3', '-pix_fmt', 'yuv420p', 
+            '-vf', "scale='if(gt(iw,ih),1080,-2)':'if(gt(iw,ih),-2,1080)',pad=1080:1080:(1080-iw)/2:(1080-ih)/2:black,format=yuv420p",
+            output_file
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_file
+    except Exception as e:
+        log_msg(f"[IMG->VID ERROR] {e}")
+        return None
+
 class HeartbeatHandler(FileSystemEventHandler):
     def __init__(self):
         self.is_primed = False
@@ -681,46 +699,62 @@ class HeartbeatHandler(FileSystemEventHandler):
             
             log_msg(f">>> [CAROUSEL] Dispatching {len(media_files)} items from {os.path.basename(folder_path)}...")
             
-            # 3. Upload All to Supabase and Group by Type
-            videos = []
-            images = []
+            # 3. Gather and Normalize Media
+            asset_data = []
+            temp_files = []
+            
+            # Check if we have mixed media
+            has_video = any(f.lower().endswith(('.mp4', '.mov')) for f in media_files)
+            has_image = any(f.lower().endswith(('.jpg', '.png', '.jpeg')) for f in media_files)
+            is_mixed = has_video and has_image
+            
+            if is_mixed:
+                log_msg(f">>> [CAROUSEL] Mixed media detected. Normalizing photos to video segments for unified feed...")
+            
             for f in sorted(media_files): # Ensure order
-                url = upload_to_supabase(f, "pulses")
-                if not url: continue
+                is_vid = f.lower().endswith(('.mp4', '.mov'))
                 
-                item = {"url": url}
-                if f.lower().endswith(('.mp4', '.mov')):
-                    thumb = generate_and_upload_thumbnail(f)
-                    if thumb: item["thumbnail"] = thumb
-                    videos.append(item)
-                else:
-                    images.append(item)
+                active_file = f
+                if is_mixed and not is_vid:
+                    # Convert image to 3s video to allow mixed carousel
+                    optimized_vid = convert_image_to_video(f)
+                    if optimized_vid:
+                        active_file = optimized_vid
+                        temp_files.append(optimized_vid)
+                        is_vid = True
+                
+                url = upload_to_supabase(active_file, "pulses")
+                if url:
+                    item = {"url": url}
+                    if is_vid:
+                        thumb = generate_and_upload_thumbnail(active_file)
+                        if thumb: item["thumbnail"] = thumb
+                    asset_data.append(item)
             
-            if not videos and not images: return
+            if not asset_data: return
             
-            # 4. Dispatch Groups Separately (Buffer Limitation: No Mixed Carousels)
+            # 4. Dispatch Unified Carousel
             folder_name = os.path.basename(folder_path)
+            msg = f"◈ LANNA WHISPERS: {folder_name} (Collection) ◈"
             
-            # DISPATCH VIDEOS
-            if videos:
-                log_msg(f">>> [CAROUSEL] Dispatching {len(videos)} videos from {folder_name}...")
-                v_msg = f"◈ LANNA WHISPERS: {folder_name} (Collection - Videos) ◈"
-                insert_pulse_to_supabase("Lanna Whispers", "Collection (Videos)", videos[0]["url"], channel_id="LANNA", is_social=True)
-                broadcast_to_buffer(v_msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=videos, is_video=True, post_type="GRID", bypass_quota=True)
+            # Sync to Website
+            insert_pulse_to_supabase("Lanna Whispers", "Collection", asset_data[0]["url"], channel_id="LANNA", is_social=True)
             
-            # DISPATCH IMAGES
-            if images:
-                log_msg(f">>> [CAROUSEL] Dispatching {len(images)} images from {folder_name}...")
-                i_msg = f"◈ LANNA WHISPERS: {folder_name} (Collection - Photos) ◈"
-                insert_pulse_to_supabase("Lanna Whispers", "Collection (Photos)", images[0]["url"], channel_id="LANNA", is_social=True)
-                broadcast_to_buffer(i_msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=images, is_video=False, post_type="GRID", bypass_quota=True)
+            # Broadcast to Buffer
+            # If we normalized everything, is_video must be True to trigger Video Carousel logic in Buffer
+            force_video = is_mixed or has_video
+            success = broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=asset_data, is_video=force_video, post_type="GRID", bypass_quota=True)
             
-            # 6. Update Quota
-            quota_data["weekly_lanna_carousel_sent"] = current_week
-            with open(QUOTA_FILE, 'w') as f:
-                json.dump(quota_data, f)
-                
-            log_msg(f">>> [CAROUSEL SUCCESS] {folder_name} processing complete.")
+            if success:
+                quota_data["weekly_lanna_carousel_sent"] = current_week
+                with open(QUOTA_FILE, 'w') as f:
+                    json.dump(quota_data, f)
+                log_msg(f">>> [CAROUSEL SUCCESS] {folder_name} unified and live.")
+            
+            # Cleanup temp videos
+            for tf in temp_files:
+                try: os.remove(tf)
+                except: pass
             
         except Exception as e:
             log_msg(f"[CAROUSEL ERROR] {e}")
