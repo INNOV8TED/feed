@@ -1175,8 +1175,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                     channel_daily = quota_data.get(today, {}).get(buffer_profile, {})
                     total_today = sum(channel_daily.values())
                     
-                    # Blue is limited to 1 total per day, others 2 (Matching Buffer Free Slots)
-                    max_total = 1 if channel_id == "BLUE" else 2
+                    # Blue is limited to 1 total per day, others 3 (Matching Expanded Buffer Schedule)
+                    max_total = 1 if channel_id == "BLUE" else 3
                     
                     if total_today >= max_total:
                         log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping.")
