@@ -1435,6 +1435,7 @@
                 .from('studio_heartbeat')
                 .select('*')
                 .gt('created_at', sessionStart)
+                .neq('project_name', '[SYSTEM_STATUS]')
                 .order('created_at', { ascending: false })
                 .limit(40);
             
