@@ -1693,7 +1693,7 @@ def check_inventory_levels():
                 asset_url="",
                 mood="warning",
                 software="Inventory Watcher",
-                quote=f"The social broadcast pipeline is running low ({total_items} items left). New content required in SOCIAL folders to maintain momentum.",
+                quote=f"Social inventory low ({total_items} items). Replenish SOCIAL/LANNA folders to maintain feed momentum.",
                 channel_id="SYSTEM",
                 is_milestone=False
             )
