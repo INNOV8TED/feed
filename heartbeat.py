@@ -1659,8 +1659,8 @@ def process_backlog(handler):
                 shutil.move(post_path, dest)
                 break
         
-        # 3. SMART INVENTORY CHECK (Silenced for now to prevent startup spam)
-        # check_inventory_levels()
+        # 3. SMART INVENTORY DIAGNOSTIC
+        check_inventory_levels()
 
     except Exception as e:
         log_msg(f"[BACKLOG ERROR] {e}")
@@ -1669,47 +1669,66 @@ def process_backlog(handler):
     threading.Timer(3600, lambda: process_backlog(handler)).start()
 
 def check_inventory_levels():
-    """Checks source folders for content and alerts once every 24h if low."""
+    """Performs a specific diagnostic of social content depth and alerts if tomorrow's queue is at risk."""
     global last_inventory_alert_time
     try:
         now = time.time()
-        if now - last_inventory_alert_time < 86400: # 24h Cooldown
+        # 12-hour cooldown to prevent spam, but still check twice a day
+        if now - last_inventory_alert_time < 43200: 
             return
 
-        # Folders to check for manual supply
-        source_folders = [
-            os.path.join(WATCH_PATH, "SOCIAL", "LANNA"),
-            os.path.join(WATCH_PATH, "SOCIAL", "INNOV8"),
-            os.path.join(WATCH_PATH, "SOCIAL", "BLUE"),
-            os.path.join(WATCH_PATH, "MEMORIES"),
-            os.path.join(PENDING_DIR, "POSTS"),
-            os.path.join(PENDING_DIR, "CAROUSELS")
-        ]
+        quota_data = {}
+        if os.path.exists(QUOTA_FILE):
+            with open(QUOTA_FILE, 'r') as f:
+                try:
+                    with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+                except: pass
         
-        total_items = 0
-        for folder in source_folders:
-            if os.path.exists(folder):
-                # Count files and subfolders
-                items = os.listdir(folder)
-                # Filter out system files
-                valid_items = [i for i in items if not i.startswith('.') and i.lower() != "desktop.ini"]
-                total_items += len(valid_items)
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        daily_quota = quota_data.get(today, {})
         
-        if total_items < 3: # Threshold for alert
-            log_msg(f"◈ [INVENTORY] Low stock detected ({total_items} items). Sending alert...")
+        # Requirements map: {ProfileID: [Required Types]}
+        requirements = {
+            BUFFER_PROFILE_ID_LANNA: ["STORY", "REEL", "GRID"],
+            BUFFER_PROFILE_ID_MAIN: ["STORY", "REEL", "GRID"],
+            BUFFER_PROFILE_ID_BLUE: ["REEL"] # YouTube Shorts
+        }
+        
+        missing_reports = []
+        
+        for profile_id, types in requirements.items():
+            channel_label = "LANNA" if profile_id == BUFFER_PROFILE_ID_LANNA else "INN.OV8" if profile_id == BUFFER_PROFILE_ID_MAIN else "BLUE"
+            
+            for q_type in types:
+                queued_today = daily_quota.get(profile_id, {}).get(q_type, 0)
+                
+                # If we don't have at least 2 in the queue (Today + Tomorrow)
+                if queued_today < 2:
+                    # Check if we have anything in PENDING to fill it
+                    pending_folder = os.path.join(PENDING_DIR, "POSTS") 
+                    pending_count = len([f for f in os.listdir(pending_folder) if not f.startswith('.')])
+                    
+                    if pending_count == 0:
+                        missing_reports.append(f"{channel_label} {q_type}")
+        
+        if missing_reports:
+            log_msg(f"◈ [INVENTORY] Missing: {', '.join(missing_reports)}")
             insert_pulse_to_supabase(
                 project_name="[SYSTEM_ADVICE]",
-                action_label="Supply Chain Alert: Content Depleted",
+                action_label="Supply Chain Alert",
                 asset_url="",
                 mood="warning",
-                software="Inventory Watcher",
-                quote=f"Social inventory low ({total_items} items). Replenish SOCIAL/LANNA folders to maintain feed momentum.",
+                software="Inventory Diagnostic",
+                quote=f"Diagnostic complete. To maintain a 24h buffer, please resupply: {', '.join(missing_reports)}. Drop new renders into SOCIAL or MEMORIES folders.",
                 channel_id="SYSTEM",
                 is_milestone=False
             )
             last_inventory_alert_time = now
+        else:
+            log_msg("◈ [INVENTORY] All queues healthy (1-day buffer active).")
+            
     except Exception as e:
-        log_msg(f"[INVENTORY CHECK ERROR] {e}")
+        log_msg(f"[INVENTORY DIAGNOSTIC ERROR] {e}")
 
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
