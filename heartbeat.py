@@ -88,6 +88,7 @@ load_cache()
 
 # ECHO-ZERO LOCK
 last_broadcast_time = 0
+last_inventory_alert_time = 0
 BROADCAST_LOCK_PERIOD = 20
 pending_timers = {}
 recent_pulse_lock = {} # {path: timestamp} to prevent duplicates
@@ -1648,29 +1649,57 @@ def process_backlog(handler):
                 shutil.move(post_path, dest)
                 break
         
-        # 3. INVENTORY CHECK (Supply Advice)
-        inventory_counts = {
-            "posts": len(os.listdir(os.path.join(PENDING_DIR, "POSTS"))),
-            "carousels": len(os.listdir(os.path.join(PENDING_DIR, "CAROUSELS")))
-        }
-        if inventory_counts["posts"] == 0 and inventory_counts["carousels"] == 0:
-            log_msg("◈ [ADVICE] Social inventory is EMPTY. Feed replenishment required.")
-            insert_pulse_to_supabase(
-                project_name="[SYSTEM_ADVICE]",
-                action_label="Supply Chain Alert: Content Depleted",
-                asset_url="",
-                mood="warning",
-                software="Inventory Watcher",
-                quote="The social broadcast queue is dry. New content required in SOCIAL/LANNA or MEMORIES folders to maintain daily momentum.",
-                channel_id="SYSTEM",
-                is_milestone=False
-            )
+        # 3. SMART INVENTORY CHECK (No Spam)
+        check_inventory_levels()
 
     except Exception as e:
         log_msg(f"[BACKLOG ERROR] {e}")
     
     # Reschedule Backlog Check every hour (3600 seconds)
     threading.Timer(3600, lambda: process_backlog(handler)).start()
+
+def check_inventory_levels():
+    """Checks source folders for content and alerts once every 24h if low."""
+    global last_inventory_alert_time
+    try:
+        now = time.time()
+        if now - last_inventory_alert_time < 86400: # 24h Cooldown
+            return
+
+        # Folders to check for manual supply
+        source_folders = [
+            os.path.join(WATCH_PATH, "SOCIAL", "LANNA"),
+            os.path.join(WATCH_PATH, "SOCIAL", "INNOV8"),
+            os.path.join(WATCH_PATH, "SOCIAL", "BLUE"),
+            os.path.join(WATCH_PATH, "MEMORIES"),
+            os.path.join(PENDING_DIR, "POSTS"),
+            os.path.join(PENDING_DIR, "CAROUSELS")
+        ]
+        
+        total_items = 0
+        for folder in source_folders:
+            if os.path.exists(folder):
+                # Count files and subfolders
+                items = os.listdir(folder)
+                # Filter out system files
+                valid_items = [i for i in items if not i.startswith('.') and i.lower() != "desktop.ini"]
+                total_items += len(valid_items)
+        
+        if total_items < 3: # Threshold for alert
+            log_msg(f"◈ [INVENTORY] Low stock detected ({total_items} items). Sending alert...")
+            insert_pulse_to_supabase(
+                project_name="[SYSTEM_ADVICE]",
+                action_label="Supply Chain Alert: Content Depleted",
+                asset_url="",
+                mood="warning",
+                software="Inventory Watcher",
+                quote=f"The social broadcast pipeline is running low ({total_items} items left). New content required in SOCIAL folders to maintain momentum.",
+                channel_id="SYSTEM",
+                is_milestone=False
+            )
+            last_inventory_alert_time = now
+    except Exception as e:
+        log_msg(f"[INVENTORY CHECK ERROR] {e}")
 
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
