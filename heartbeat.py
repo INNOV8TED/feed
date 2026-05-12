@@ -945,7 +945,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                 asset_file = extract_random_clip(active_source)
             elif is_audio:
                 log_msg(f">>> [AUDIO] Generating visualizer for {os.path.basename(active_source)}...")
-                asset_file = generate_audio_visualizer(active_source)
+                is_song = "BLUE" in path_upper
+                asset_file = generate_audio_visualizer(active_source, is_song=is_song)
             elif is_image:
                 log_msg(f">>> [IMAGE] Preparing pulse asset: {os.path.basename(active_source)}")
                 try:
@@ -985,7 +986,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                                 is_temp_full_audio = False
                                 if is_audio:
                                     log_msg(f">>> [SOCIAL] Generating FULL-LENGTH visualizer for Buffer...")
-                                    actual_social_source = generate_audio_visualizer(active_source, full_length=True)
+                                    is_song = "BLUE" in path_upper
+                                    actual_social_source = generate_audio_visualizer(active_source, full_length=True, is_song=is_song)
                                     is_temp_full_audio = True
 
                                 full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(actual_social_source)[1]}"
@@ -1295,8 +1297,8 @@ def generate_blueprint(input_image):
         log_msg(f"[BLUEPRINT ERROR] {e}")
         return None
 
-def generate_audio_visualizer(audio_path, full_length=False):
-    """Generates an AI-powered 'Blue Chromatic' lyric video with Vector Scope visuals."""
+def generate_audio_visualizer(audio_path, full_length=False, is_song=True):
+    """Generates an AI-powered visualizer. Songs get lyrics/vectorscope, others get waveforms."""
     try:
         # 1. Get Duration
         cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
@@ -1305,7 +1307,11 @@ def generate_audio_visualizer(audio_path, full_length=False):
         except:
             duration = 30.0 # Fallback
             
-        t = duration if full_length else min(25, duration)
+        if is_song:
+            t = duration if full_length else min(25, duration)
+        else:
+            t = min(10, duration) # 10s for podcasts/clients
+        
         start = 0 
             
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1313,45 +1319,41 @@ def generate_audio_visualizer(audio_path, full_length=False):
         output_file = os.path.join(base_dir, f"audio_pulse_{ts}.mp4")
         srt_file = os.path.join(base_dir, f"lyrics_{ts}.srt")
         
-        # 2. AI TRANSCRIPTION (OpenAI Whisper)
+        # 2. AI TRANSCRIPTION (OpenAI Whisper) - ONLY FOR SONGS
         has_lyrics = False
-        if openai_client:
+        if is_song and openai_client:
             try:
-                log_msg(f">>> [AI] Transcribing {os.path.basename(audio_path)} via Whisper...")
-                # Safety check: if file > 24MB, we might need to compress or slice it
-                # For now, just try
+                log_msg(f">>> [AI] Transcribing song: {os.path.basename(audio_path)} via Whisper...")
                 with open(audio_path, "rb") as audio:
                     transcript = openai_client.audio.transcriptions.create(
                         model="whisper-1", 
                         file=audio, 
                         response_format="srt"
                     )
-                    if transcript and len(transcript.strip()) > 50: # Basic "has content" check
+                    if transcript and len(transcript.strip()) > 50: 
                         with open(srt_file, "w", encoding="utf-8") as f:
                             f.write(transcript)
                         has_lyrics = True
-                        log_msg(f">>> [AI] Transcription Complete. Burned to {os.path.basename(srt_file)}")
+                        log_msg(f">>> [AI] Transcription Complete.")
                     else:
-                        log_msg(">>> [AI] Transcription returned empty/short result. Likely instrumental.")
+                        log_msg(">>> [AI] Transcription empty/short.")
             except Exception as ai_err:
                 log_msg(f"[AI ERROR] {ai_err}")
         
-        # 3. Generate Vector Scope Video (Vertical 1080x1920)
+        # 3. Generate Visuals (Vertical 1080x1920)
         escaped_srt = srt_file.replace("\\", "/").replace(":", "\\:")
         
-        # Visual Parameters
-        # avectorscope Cyan-ish color: gc=204:bc=255
-        filter_complex = (
-            f"[0:a]avectorscope=s=1080x1920:m=lissajous:rc=0:gc=255:bc=255:rf=1:gf=1:bf=1[v];"
-        )
-        
-        # If we have lyrics, burn them in with much better styling
-        if has_lyrics and os.path.exists(srt_file):
-            # Debug Positioning: Middle Center, Small Font
-            filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=10,FontSize=20,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=0'[v]"
+        if is_song:
+            # Blue Chromatic Vector Scope
+            filter_complex = f"[0:a]avectorscope=s=1080x1920:m=lissajous:rc=0:gc=255:bc=255:rf=1:gf=1:bf=1[v];"
+            if has_lyrics and os.path.exists(srt_file):
+                filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=10,FontSize=20,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=0'[v]"
+            else:
+                filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontname='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
         else:
-            # Add a high-visibility labels for instrumental tracks
-            filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontname='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
+            # Green Peak Waveform for Podcasts/Clients
+            filter_complex = f"[0:a]showwaves=s=1080x1920:mode=cline:colors=0x00FF00[v];"
+            filter_complex += f"[v]drawtext=text='STUDIO AUDIO LOG':fontname='Arial Black':fontcolor=0x00FF00:fontsize=48:x=(w-text_w)/2:y=100:alpha=0.8:box=1:boxcolor=black@0.6:boxborderw=20[v]"
         
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
