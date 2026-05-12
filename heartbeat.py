@@ -949,13 +949,26 @@ class HeartbeatHandler(FileSystemEventHandler):
                         if is_social_folder:
                             try:
                                 log_msg(f">>> [SOCIAL] Uploading optimized source for Buffer...")
-                                full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(active_source)[1]}"
-                                with open(active_source, 'rb') as f_full:
+                                # Special Case: For Audio, we need to generate a FULL visualizer for Social
+                                actual_social_source = active_source
+                                is_temp_full_audio = False
+                                if is_audio:
+                                    log_msg(f">>> [SOCIAL] Generating FULL-LENGTH visualizer for Buffer...")
+                                    actual_social_source = generate_audio_visualizer(active_source, full_length=True)
+                                    is_temp_full_audio = True
+
+                                full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(actual_social_source)[1]}"
+                                with open(actual_social_source, 'rb') as f_full:
                                     supabase.storage.from_('studio-assets').upload(
                                         full_storage_path, f_full.read(),
-                                        file_options={"content-type": content_type}
+                                        file_options={"content-type": content_type if not is_audio else "video/mp4"}
                                     )
                                 full_asset_url = supabase.storage.from_('studio-assets').get_public_url(full_storage_path)
+                                
+                                # Cleanup temp full audio visualizer
+                                if is_temp_full_audio and os.path.exists(actual_social_source):
+                                    try: os.remove(actual_social_source)
+                                    except: pass
                             except Exception as e:
                                 log_msg(f"[SOCIAL UPLOAD ERROR] {e}")
                     
@@ -1235,7 +1248,7 @@ def generate_blueprint(input_image):
         log_msg(f"[BLUEPRINT ERROR] {e}")
         return None
 
-def generate_audio_visualizer(audio_path):
+def generate_audio_visualizer(audio_path, full_length=False):
     """Generates an AI-powered 'Blue Chromatic' lyric video with Vector Scope visuals."""
     try:
         # 1. Get Duration
@@ -1245,7 +1258,7 @@ def generate_audio_visualizer(audio_path):
         except:
             duration = 30.0 # Fallback
             
-        t = min(25, duration) # Increased to 25s for better music feel
+        t = duration if full_length else min(25, duration)
         start = 0 
             
         base_dir = os.path.dirname(os.path.abspath(__file__))
