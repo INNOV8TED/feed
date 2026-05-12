@@ -144,8 +144,8 @@ def generate_and_upload_thumbnail(video_path):
     """Extracts a frame from a video and uploads it as a thumbnail."""
     try:
         temp_thumb = f"thumb_temp_{int(time.time())}.jpg"
-        # Extract frame at 1 second
-        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:01', '-vframes', '1', temp_thumb]
+        # Extract frame at 5 seconds (to avoid fade-from-black intros)
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:05', '-vframes', '1', temp_thumb]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if os.path.exists(temp_thumb):
