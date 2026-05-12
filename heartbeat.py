@@ -234,9 +234,9 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
         if today not in quota: quota[today] = {}
         if profile_id not in quota[today]: quota[today][profile_id] = {}
         
-        # INCREASED QUOTA: 1 Reel, 1 Story, 1 Grid Post per channel per day
-        if not bypass_quota and quota[today][profile_id].get(post_type, 0) >= 1:
-            log_msg(f"◈ [QUOTA] Daily {post_type} for channel {profile_id[-4:]} is full.")
+        # INCREASED QUOTA: 2 items per type (allows for Today + Tomorrow queue depth)
+        if not bypass_quota and quota[today][profile_id].get(post_type, 0) >= 2:
+            log_msg(f"◈ [QUOTA] Buffer queue for {post_type} ({profile_id[-4:]}) is sufficiently filled (Today+Tomorrow).")
             return
             
         # Mark as sent
@@ -1642,14 +1642,29 @@ def process_backlog(handler):
             if os.path.exists(QUOTA_FILE):
                 with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
             
-            if quota_data.get(today, {}).get(BUFFER_PROFILE_ID_LANNA, {}).get(q_type, 0) < 1:
-                log_msg(f"◈ [BACKLOG] Releasing {q_type}: {os.path.basename(post_path)}")
+            if quota_data.get(today, {}).get(BUFFER_PROFILE_ID_LANNA, {}).get(q_type, 0) < 2:
+                log_msg(f"◈ [BACKLOG] Releasing {q_type} for tomorrow's queue: {os.path.basename(post_path)}")
                 dest = os.path.join(WATCH_PATH, "SOCIAL", "LANNA", os.path.basename(post_path))
                 shutil.move(post_path, dest)
-                # This will trigger on_modified naturally, but let's call it to be sure
-                # Actually, on_modified will fire. We just need to make sure we don't double-call.
-                # Just moving it back is enough.
                 break
+        
+        # 3. INVENTORY CHECK (Supply Advice)
+        inventory_counts = {
+            "posts": len(os.listdir(os.path.join(PENDING_DIR, "POSTS"))),
+            "carousels": len(os.listdir(os.path.join(PENDING_DIR, "CAROUSELS")))
+        }
+        if inventory_counts["posts"] == 0 and inventory_counts["carousels"] == 0:
+            log_msg("◈ [ADVICE] Social inventory is EMPTY. Feed replenishment required.")
+            insert_pulse_to_supabase(
+                project_name="[SYSTEM_ADVICE]",
+                action_label="Supply Chain Alert: Content Depleted",
+                asset_url="",
+                mood="warning",
+                software="Inventory Watcher",
+                quote="The social broadcast queue is dry. New content required in SOCIAL/LANNA or MEMORIES folders to maintain daily momentum.",
+                channel_id="SYSTEM",
+                is_milestone=False
+            )
 
     except Exception as e:
         log_msg(f"[BACKLOG ERROR] {e}")
