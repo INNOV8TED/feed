@@ -426,8 +426,7 @@ class HeartbeatHandler(FileSystemEventHandler):
         if ext in IGNORE_FILES or ".git" in path:
             return
             
-        log_msg(f"[WATCHER DEBUG] Event Modified: {event.src_path}")
-        log_msg(f"[WATCHER] Change Detected: {basename}")
+        log_msg(f"◈ [WATCHER] Change Detected: {basename}")
         self.process_event(event)
         
     def on_created(self, event):
@@ -443,8 +442,24 @@ class HeartbeatHandler(FileSystemEventHandler):
         if ext in IGNORE_FILES or ".git" in path:
             return
         
-        log_msg(f"[WATCHER DEBUG] Event Created: {event.src_path}")
-        log_msg(f"[WATCHER] Created: {basename}")
+        log_msg(f"◈ [WATCHER] Created: {basename}")
+        self.process_event(event)
+
+    def on_moved(self, event):
+        if event.is_directory: return
+        path = event.dest_path.lower()
+        basename = os.path.basename(path)
+
+        # IRON SEAL: Global Ignore Checks
+        if any(folder.lower() in path for folder in IGNORE_FOLDERS): return
+        if any(ign.lower() in basename for ign in IGNORE_FILES): return
+
+        ext = os.path.splitext(path)[1].lower().strip()
+        if ext in IGNORE_FILES or ".git" in path:
+            return
+        
+        log_msg(f"[WATCHER DEBUG] Event Moved: {event.dest_path}")
+        log_msg(f"[WATCHER] Moved: {basename}")
         self.process_event(event)
 
     def process_event(self, event):
@@ -520,7 +535,6 @@ class HeartbeatHandler(FileSystemEventHandler):
                     try:
                         if not os.path.exists(file_path): return
                         current_size = os.path.getsize(file_path)
-                        log_msg(f"[STABILITY DEBUG] Checking {os.path.basename(file_path)}: Size={current_size}, StableCount={stable_count}")
                         
                         if current_size == last_size and current_size > 0:
                             stable_count += 1
@@ -712,20 +726,16 @@ class HeartbeatHandler(FileSystemEventHandler):
         global last_broadcast_time
         try:
             current_time = time.time()
-            log_msg(f"[DISPATCH DEBUG] Starting dispatch for {os.path.basename(file_path)}")
             
             # 1. DUPLICATION GUARD (Session Lock)
             if file_path in recent_pulse_lock:
                 if current_time - recent_pulse_lock[file_path] < 600: # 10 Minute Lock
-                    log_msg(f"[DISPATCH DEBUG] Duplicate suppressed: {os.path.basename(file_path)}")
                     return
             recent_pulse_lock[file_path] = current_time
             
             ext = os.path.splitext(file_path)[1].lower().strip()
             is_video = ext in [".mp4", ".mov"]
             is_audio = ext in [".mp3", ".wav"]
-            
-            log_msg(f"[DISPATCH DEBUG] Type identified - Video: {is_video}, Audio: {is_audio}")
             
             # Identify Quality
             is_video = (ext == ".mp4" or ext == ".mov")
