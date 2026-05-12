@@ -1133,21 +1133,23 @@ class HeartbeatHandler(FileSystemEventHandler):
                 try: os.remove(active_source)
                 except: pass
 
-            # 3. CHANNEL IDENTIFICATION (Hierarchical Brand Check)
+            # 3. CHANNEL IDENTIFICATION (Social Ingest Guard)
             channel_id = "INNOV8"
             buffer_profile = BUFFER_PROFILE_ID_MAIN
-            # Robust split handling both \ and /
-            path_parts = [p.upper() for p in file_path.replace("\\", "/").split("/")]
+            mood = "creative"
+            software = "Graphic Engine"
+            is_social_folder = any(folder in path_upper for folder in ["SOCIAL", "LANNA", "BLUE", "MEMORIES", "LABS"])
             
-            if "LANNA" in path_parts:
-                channel_id = "LANNA"
-                buffer_profile = BUFFER_PROFILE_ID_LANNA
-            elif "BLUE" in path_parts or "BLUE CHROMATIC" in path_parts:
+            if "BLUE" in path_upper:
                 channel_id = "BLUE"
                 buffer_profile = BUFFER_PROFILE_ID_BLUE
-            elif "INNOV8" in path_parts:
-                channel_id = "INNOV8"
-                buffer_profile = BUFFER_PROFILE_ID_MAIN
+            elif "LANNA" in path_upper:
+                channel_id = "LANNA"
+                buffer_profile = BUFFER_PROFILE_ID_LANNA
+            elif "LABS" in path_upper:
+                channel_id = "LABS"
+            elif "MEMORIES" in path_upper:
+                channel_id = "MEMORIES"
 
             # 4. PRE-SYNC QUOTA CHECK FOR LANNA (Prevent Website Spam)
             if channel_id == "LANNA" and is_social_folder:
@@ -1238,6 +1240,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 elif "LANNA" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_data], is_video=is_video, post_type=q_type, bypass_quota=True)
+                
+                return # CRITICAL: Social ingest ends here.
                 
             elif is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
