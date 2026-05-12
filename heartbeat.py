@@ -1157,7 +1157,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                     return
             except: pass
 
-                # 3. QUOTA CHECK (Website & Buffer)
+            # 4. SOCIAL QUOTA & BROADCAST GUARD
+            if is_social_folder or "LANNA" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "MEMORIES" in path_upper:
                 today = datetime.datetime.now().strftime('%Y-%m-%d')
                 width, height = get_video_dimensions(file_path)
                 is_vertical = height > width
