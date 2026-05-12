@@ -164,8 +164,8 @@ def generate_and_upload_thumbnail(video_path):
     """Extracts a frame from a video and uploads it as a thumbnail."""
     try:
         temp_thumb = f"thumb_temp_{int(time.time())}.jpg"
-        # Extract frame at 8 seconds (to avoid long fade-from-black intros)
-        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:08', '-vframes', '1', temp_thumb]
+        # Extract thumbnail at 12 seconds (to bypass very long fade-from-black intros)
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:12', '-vframes', '1', temp_thumb]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if os.path.exists(temp_thumb):
@@ -1194,8 +1194,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                             with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
                         except: pass
                     
-                    if quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 2:
-                        log_msg(f"◈ [QUOTA] Social buffer full for {channel_id} {q_type}. Skipping pulse.")
+                    if quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 1:
+                        log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping pulse.")
                         return
                     
                     # SPECIAL CASE: YouTube (BLUE) ONLY supports videos
@@ -1825,7 +1825,12 @@ if __name__ == "__main__":
                             time.sleep(2)
                             continue
                     
-                    for f in files:
+                    # SHUFFLE FILES FOR CONTENT VARIETY
+                    current_files = list(files)
+                    if "MEMORIES" not in root.upper():
+                        random.shuffle(current_files)
+                    
+                    for f in current_files:
                         if any(ign.lower() in f.lower() for ign in IGNORE_FILES): continue
                         ext = os.path.splitext(f)[1].lower().strip()
                         if any(key in ext for key in WORKFLOW_MAP):
