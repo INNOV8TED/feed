@@ -164,8 +164,8 @@ def generate_and_upload_thumbnail(video_path):
     """Extracts a frame from a video and uploads it as a thumbnail."""
     try:
         temp_thumb = f"thumb_temp_{int(time.time())}.jpg"
-        # Extract thumbnail at 12 seconds (to bypass very long fade-from-black intros)
-        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:12', '-vframes', '1', temp_thumb]
+        # Extract thumbnail at 15 seconds (to bypass long intros and ensure visual rich previews)
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:15', '-vframes', '1', temp_thumb]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if os.path.exists(temp_thumb):
@@ -827,14 +827,14 @@ class HeartbeatHandler(FileSystemEventHandler):
                 is_social=True
             )
             
-            # 6. Dispatch to Buffer
+            # 6. Dispatch to Buffer (Respecting Daily Quota)
             broadcast_to_buffer(
                 action_label, 
                 profile_id=BUFFER_PROFILE_ID_LANNA, 
                 asset_urls=asset_data, 
                 is_video=has_video, 
                 post_type="GRID", 
-                bypass_quota=True
+                bypass_quota=False # Count toward daily limit
             )
             
             # 7. Update Weekly Quota
@@ -1196,8 +1196,16 @@ class HeartbeatHandler(FileSystemEventHandler):
                             with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
                         except: pass
                     
-                    if quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 1:
-                        log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping pulse.")
+                    # Strict 1-per-type AND 3-per-day total lock
+                    channel_daily = quota_data.get(today, {}).get(buffer_profile, {})
+                    total_today = sum(channel_daily.values())
+                    
+                    if total_today >= 3:
+                        log_msg(f"◈ [QUOTA] {channel_id} total daily limit (3) reached. Skipping.")
+                        return
+                        
+                    if channel_daily.get(q_type, 0) >= 1:
+                        log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping.")
                         return
                     
                     # SPECIAL CASE: YouTube (BLUE) ONLY supports videos
