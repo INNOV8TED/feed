@@ -1349,11 +1349,11 @@ def generate_audio_visualizer(audio_path, full_length=False, is_song=True):
             if has_lyrics and os.path.exists(srt_file):
                 filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=10,FontSize=20,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=0'[v]"
             else:
-                filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':fontname='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
+                filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':font='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
         else:
             # Green Peak Waveform for Podcasts/Clients
             filter_complex = f"[0:a]showwaves=s=1080x1920:mode=cline:colors=0x00FF00[v];"
-            filter_complex += f"[v]drawtext=text='STUDIO AUDIO LOG':fontname='Arial Black':fontcolor=0x00FF00:fontsize=48:x=(w-text_w)/2:y=100:alpha=0.8:box=1:boxcolor=black@0.6:boxborderw=20[v]"
+            filter_complex += f"[v]drawtext=text='STUDIO AUDIO LOG':font='Arial':fontcolor=0x00FF00:fontsize=48:x=(w-text_w)/2:y=100:alpha=0.8:box=1:boxcolor=black@0.6:boxborderw=20[v]"
         
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
