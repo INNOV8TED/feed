@@ -129,6 +129,42 @@ WORKFLOW_MAP = {
     ".mov":    {"category": "render",  "mood": "accomplished"}
 }
 
+def upload_to_supabase(file_path, folder="pulses"):
+    """Helper to upload a file to Supabase and return the public URL."""
+    try:
+        with open(file_path, 'rb') as f:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            storage_path = f"{folder}/{int(time.time())}_{os.path.basename(file_path)}"
+            content_type = "video/mp4" if file_ext == ".mp4" else "image/jpeg"
+            if file_ext == ".mov": content_type = "video/quicktime"
+            if file_ext == ".png": content_type = "image/png"
+            
+            supabase.storage.from_('studio-assets').upload(
+                storage_path, f.read(), 
+                file_options={"content-type": content_type}
+            )
+            return supabase.storage.from_('studio-assets').get_public_url(storage_path)
+    except Exception as e:
+        log_msg(f"[SUPABASE UPLOAD ERROR] {e}")
+        return None
+
+def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="energetic", software="Studio Engine", quote="", channel_id="INNOV8", is_milestone=True, is_social=False):
+    """Helper to insert a pulse record into the Supabase heartbeat table."""
+    try:
+        status_text = "Social active." if is_social else "Neural link active."
+        data = {
+            "project_name": project_name,
+            "action_label": action_label,
+            "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}|{channel_id}", 
+            "source": "Windows-Workstation",
+            "is_milestone": is_milestone
+        }
+        res = supabase.table("studio_heartbeat").insert(data).execute()
+        return res.data
+    except Exception as e:
+        log_msg(f"[SUPABASE INSERT ERROR] {e}")
+        return None
+
 def get_project_name(file_path):
     """Extract project name from path (e.g., .../DFP/Dr Drive Podcast/ -> Dr Drive)."""
     parts = file_path.split(os.sep)
@@ -152,7 +188,7 @@ def get_project_name(file_path):
     except:
         return "Studio Project"
 
-def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_type="REEL"):
+def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_type="REEL", bypass_quota=False, platform="instagram"):
     if not profile_id:
         log_msg("Buffer Profile ID missing. Skipping broadcast.")
         return
@@ -170,7 +206,7 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
         if profile_id not in quota[today]: quota[today][profile_id] = {}
         
         # INCREASED QUOTA: 1 Reel, 1 Story, 1 Grid Post per channel per day
-        if quota[today][profile_id].get(post_type, 0) >= 1:
+        if not bypass_quota and quota[today][profile_id].get(post_type, 0) >= 1:
             log_msg(f"◈ [QUOTA] Daily {post_type} for channel {profile_id[-4:]} is full.")
             return
             
@@ -180,16 +216,6 @@ def broadcast_to_buffer(text, profile_id, asset_url=None, is_video=False, post_t
             json.dump(quota, f)
     except Exception as e:
         log_msg(f"[QUOTA ERROR] {e}")
-
-def get_video_dimensions(path):
-    """Detect aspect ratio for smart routing."""
-    try:
-        cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', path]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        data = json.loads(res.stdout)
-        return int(data['streams'][0]['width']), int(data['streams'][0]['height'])
-    except:
-        return 1920, 1080 # Default to vertical
 
     if not BUFFER_TOKEN or "your_buffer" in BUFFER_TOKEN:
         log_msg("Buffer token missing. Skipping broadcast.")
@@ -211,21 +237,56 @@ def get_video_dimensions(path):
     }
     """
     
-    # Select asset type
-    assets = {}
-    if asset_url:
-        if is_video:
-            assets = {"videos": [{"url": asset_url}]}
-        else:
-            assets = {"images": [{"url": asset_url}]}
+    # Prepare Assets according to Buffer GraphQL Schema
+    assets_payload = {}
+    images = []
+    videos = []
+    
+    if asset_urls:
+        if isinstance(asset_urls, str): asset_urls = [asset_urls]
+        for a_url in asset_urls:
+            is_vid = a_url.lower().endswith(('.mp4', '.mov'))
+            if is_vid:
+                videos.append({"url": a_url, "thumbnailUrl": f"{a_url}?v=thumb"})
+            else:
+                images.append({"url": a_url})
+    
+    if images: assets_payload["images"] = images
+    if videos: assets_payload["videos"] = videos
+    
+    if not assets_payload:
+        log_msg("No assets for Buffer. Skipping.")
+        return
 
-    # Selecy hashtags based on content
+    # Select hashtags based on content
     tags = " #StudioPulse #Innov8Labs #CreativeProcess #NeuralLink"
-    if is_video: tags += " #Reel #Production"
-    else: tags += " #StudioVision #BehindTheScenes"
+    if post_type == "GRID" and "MEMORY" in text:
+        tags = " #StudioPulse #Memories #Innov8Labs #BehindTheScenes"
+    elif is_video: 
+        tags += " #Reel #Production"
+    else: 
+        tags += " #StudioVision #BehindTheScenes"
 
     # Neural Branding Description
-    description = f"◈ STUDIO BROADCAST ◈\n\n{text}\n\n📍 INNOV8 Labs (Lanna, TH)\n\n{tags}"
+    header = "◈ STUDIO MEMORY ◈" if "MEMORY" in text else "◈ STUDIO BROADCAST ◈"
+    description = f"{header}\n\n{text}\n\n📍 INNOV8 Labs (Lanna, TH)\n\n{tags}"
+
+    # --- 2. BUILD PAYLOAD ---
+    metadata = {}
+    if platform == "youtube":
+        metadata = {
+            "youtube": {
+                "title": text[:100], # Required
+                "categoryId": "24"    # Entertainment - Required by Buffer for YT
+            }
+        }
+    else:
+        metadata = {
+            "instagram": {
+                "type": "post" if post_type == "GRID" else ("reel" if is_video else "story"),
+                "shouldShareToFeed": True
+            }
+        }
 
     variables = {
         "input": {
@@ -233,31 +294,17 @@ def get_video_dimensions(path):
             "channelId": profile_id,
             "schedulingType": "automatic",
             "mode": "addToQueue",
-            "assets": assets,
-            "metadata": {
-                "instagram": {
-                    "type": "reel" if is_video else "story",
-                    "shouldShareToFeed": True if is_video else False
-                },
-                "youtube": {
-                    "type": "short" if is_video else "video"
-                },
-                "facebook": {
-                    "type": "reel" if is_video else "story"
-                },
-                "tiktok": {
-                    "type": "video"
-                }
-            }
+            "assets": assets_payload,
+            "metadata": metadata
         }
     }
     
     log_msg(f"◈ [BUFFER] Dispatching {post_type} payload for {profile_id[-4:]}...")
-    # log_msg(f"◈ [DEBUG] Variables: {json.dumps(variables)}")
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {BUFFER_TOKEN}"
+        "Authorization": f"Bearer {BUFFER_TOKEN}",
+        "Accept": "application/json"
     }
     
     try:
@@ -270,12 +317,26 @@ def get_video_dimensions(path):
                 try:
                     post_id = data['data']['createPost']['post']['id']
                     log_msg(f"🚀 Buffer Success! Post created with ID: {post_id} on channel {profile_id}")
+                    return True
                 except:
                     log_msg(f"Buffer Response Data: {data}")
+                    return False
         else:
             log_msg(f"Buffer HTTP error: {response.status_code} - {response.text}")
+            return False
     except Exception as e:
         log_msg(f"Buffer broadcast script error: {e}")
+        return False
+
+def get_video_dimensions(path):
+    """Detect aspect ratio for smart routing."""
+    try:
+        cmd = ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', path]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        data = json.loads(res.stdout)
+        return int(data['streams'][0]['width']), int(data['streams'][0]['height'])
+    except:
+        return 1920, 1080 # Default to vertical
 
 # --- SUPABASE HARDENING ---
 def get_supabase_client():
@@ -398,33 +459,54 @@ class HeartbeatHandler(FileSystemEventHandler):
                     return
 
                 # 2. SIZE STABILITY CHECK
-                try:
-                    is_video = ext in [".mp4", ".mov"]
-                    is_audio = ext in [".mp3", ".wav"]
-                    
-                    last_size = -1
-                    stable_count = 0
-                    # Renders need a longer stability window
-                    checks = 20 if is_video else 5 
-                    
-                    for _ in range(checks):
+                # Lanna Carousel Check (Subfolder in LANNA)
+                # Structure: .../LANNA/Subfolder/file.ext
+                path_parts = file_path.replace("\\", "/").split("/")
+                is_carousel = False
+                if "LANNA" in [p.upper() for p in path_parts]:
+                    # CAROUSEL CHECK: It's a carousel ONLY if it's in a SUBFOLDER of LANNA
+                    parent_dir = os.path.dirname(file_path)
+                    if os.path.basename(parent_dir).upper() != "LANNA":
+                        carousel_folder = parent_dir
+                        is_carousel = True
+                        log_msg(f"◈ [CAROUSEL] Detected potential component: {os.path.basename(file_path)}")
+                
+                # STABILITY CHECK
+                last_size = -1
+                stable_count = 0
+                while True:
+                    time.sleep(2)
+                    try:
+                        if not os.path.exists(file_path): return
                         current_size = os.path.getsize(file_path)
-                        log_msg(f"◈ [DEBUG] {os.path.basename(file_path)} Size: {current_size} | Count: {stable_count}")
-                        # Filter out empty placeholders (less than 1KB)
-                        if current_size == last_size and current_size > 1024:
+                        
+                        if current_size == last_size and current_size > 0:
                             stable_count += 1
                         else:
                             stable_count = 0
                         
-                        if stable_count >= 3: break # Stable for ~1.5s after initial growth
-                        
+                        if stable_count >= 3: break # 6 seconds stability
                         last_size = current_size
-                        time.sleep(0.5)
-                        
-                    if stable_count < 3:
-                        log_msg(f"◈ [WATCHER] Unstable: {os.path.basename(file_path)} (Count: {stable_count})")
+                    except: 
                         return
-                except: return
+                
+                if is_carousel:
+                    # Wait for the WHOLE FOLDER to be stable (no new files or modifications)
+                    log_msg(f"◈ [CAROUSEL] Waiting for folder stability: {os.path.basename(carousel_folder)}")
+                    try:
+                        folder_last_mtime = os.path.getmtime(carousel_folder)
+                        while True:
+                            time.sleep(5)
+                            current_mtime = os.path.getmtime(carousel_folder)
+                            if current_mtime == folder_last_mtime:
+                                break
+                            folder_last_mtime = current_mtime
+                        
+                        # One more safety sleep
+                        time.sleep(2)
+                        self.dispatch_carousel(carousel_folder)
+                    except: pass
+                    return
 
                 project_name = get_project_name(file_path)
                 
@@ -440,7 +522,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                     # ASSET LENIENCY: Allow images/videos even if old, unless they are EXTREMELY old (1 week)
                     # OR if they are in the "RANDOM" or "MEMORIES" or "SOCIAL" folder (unlimited age)
                     is_asset = ext in [".png", ".jpg", ".jpeg", ".mp4", ".mov", ".wav", ".mp3"]
-                    is_special_folder = any(x in file_path.upper() for x in ["RANDOM", "MEMORIES", "SOCIAL"])
+                    is_special_folder = any(x in file_path.upper() for x in ["RANDOM", "MEMORIES", "SOCIAL", "LANNA"])
                     
                     if is_special_folder:
                         threshold = 315360000.0 # 10 years (effectively unlimited)
@@ -499,6 +581,80 @@ class HeartbeatHandler(FileSystemEventHandler):
             err_msg = traceback.format_exc()
             log_msg(f"◈ [CRITICAL PROCESS ERROR] {type(e).__name__}: {e}\n{err_msg}")
 
+    def dispatch_carousel(self, folder_path):
+        """Processes a folder as a single carousel post."""
+        try:
+            # 1. Check Weekly Quota
+            current_week = datetime.datetime.now().strftime('%Y-%W')
+            quota_data = {}
+            if os.path.exists(QUOTA_FILE):
+                try:
+                    with open(QUOTA_FILE, 'r') as f:
+                        quota_data = json.load(f)
+                except: pass
+            
+            if quota_data.get("weekly_lanna_carousel_sent") == current_week:
+                log_msg(f"◈ [QUOTA] Weekly Lanna Carousel already sent. Skipping {os.path.basename(folder_path)}")
+                return
+            
+            # 1. Folder Stability Wait
+            # (Using 5s sleep to ensure all files in batch moves are accounted for)
+            time.sleep(5)
+            
+            # RE-CHECK QUOTA AFTER WAIT (Crucial for batch moves to prevent race conditions)
+            try:
+                with open(QUOTA_FILE, 'r') as f:
+                    q_check = json.load(f)
+                if q_check.get("weekly_lanna_carousel_sent") == current_week:
+                    log_msg(f"◈ [QUOTA] Weekly Lanna Carousel filled during wait. Skipping {os.path.basename(folder_path)}")
+                    return
+            except: pass
+
+            # 2. Gather All Media
+            valid_exts = [".jpg", ".png", ".mp4", ".mov"]
+            media_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.splitext(f)[1].lower() in valid_exts]
+            
+            if not media_files:
+                return
+            
+            log_msg(f">>> [CAROUSEL] Dispatching {len(media_files)} items from {os.path.basename(folder_path)}...")
+            
+            # 3. Upload All to Supabase
+            asset_urls = []
+            for f in sorted(media_files): # Ensure order
+                url = upload_to_supabase(f, "pulses")
+                if url: asset_urls.append(url)
+            
+            if not asset_urls: return
+            
+            # 4. Sync to Website Feed (Pulse) - Use first asset as cover
+            if asset_urls:
+                insert_pulse_to_supabase(
+                    project_name="Lanna Whispers",
+                    action_label="Collection",
+                    asset_url=asset_urls[0],
+                    channel_id="LANNA",
+                    is_social=True
+                )
+
+            # 5. Dispatch to Buffer
+            folder_name = os.path.basename(folder_path)
+            msg = f"◈ LANNA WHISPERS: {folder_name} (Collection) ◈"
+            success = broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=asset_urls, post_type="GRID", bypass_quota=True)
+            
+            if success:
+                # 6. Update Quota
+                quota_data["weekly_lanna_carousel_sent"] = current_week
+                with open(QUOTA_FILE, 'w') as f:
+                    json.dump(quota_data, f)
+                    
+                log_msg(f">>> [CAROUSEL SUCCESS] {folder_name} live on Lanna Whispers and Website Feed.")
+            else:
+                log_msg(f">>> [CAROUSEL ERROR] Buffer dispatch failed for {folder_name}.")
+            
+        except Exception as e:
+            log_msg(f"[CAROUSEL ERROR] {e}")
+
     def dispatch_heartbeat(self, project_name, workflow, file_path):
         """The actual logic that sends data to Supabase, after debouncing."""
         global last_broadcast_time
@@ -540,7 +696,9 @@ class HeartbeatHandler(FileSystemEventHandler):
                     return
 
             # 2. GLOBAL COOLDOWN (Echo-Zero Lock)
-            if current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD:
+            # BYPASS for specialized social releases
+            is_special_social = any(k in path_upper for k in ["MEMORIES", "BLUE"])
+            if not is_special_social and (current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD):
                 return
             
             # 3. DIGITAL FINGERPRINT CHECK (Rename/Move Guard)
@@ -597,9 +755,64 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # Remove numbers and underscores
                 import re
                 clean_name = re.sub(r'[\d_]+', ' ', filename).strip()
-                # If it's MEMORIES, add location/date context if possible (from folder structure)
+                
                 if "MEMORIES" in path_upper:
                     action_label = f"◈ {clean_name}"
+                    
+                    # EXTRACT NUMERICAL INDEX (e.g. "1 - Title" -> 1)
+                    try:
+                        match = re.search(r'^(\d+)', filename)
+                        file_index = int(match.group(1)) if match else None
+                    except: file_index = None
+
+                    # WEEKLY & SEQUENTIAL QUOTA CHECK
+                    current_week = datetime.datetime.now().strftime('%Y-%W')
+                    quota_data = {}
+                    if os.path.exists(QUOTA_FILE):
+                        try:
+                            with open(QUOTA_FILE, 'r') as f:
+                                quota_data = json.load(f)
+                        except: pass
+                    
+                    last_index = quota_data.get("last_memory_index", 0)
+                    
+                    if quota_data.get("weekly_memory_sent") == current_week:
+                        log_msg(f"◈ [QUOTA] Weekly Memory already sent for week {current_week}. Skipping {os.path.basename(file_path)}")
+                        return
+
+                    if file_index is not None and file_index != last_index + 1:
+                        log_msg(f"◈ [QUOTA] Memory #{file_index} is out of sequence. Next expected: #{last_index + 1}")
+                        return
+                elif "BLUE" in path_upper:
+                    action_label = f"◈ BLUE: {clean_name}"
+                    
+                    # WEEKLY QUOTA CHECK
+                    current_week = datetime.datetime.now().strftime('%Y-%W')
+                    quota_data = {}
+                    if os.path.exists(QUOTA_FILE):
+                        try:
+                            with open(QUOTA_FILE, 'r') as f:
+                                quota_data = json.load(f)
+                        except: pass
+                    
+                    if quota_data.get("weekly_blue_sent") == current_week:
+                        log_msg(f"◈ [QUOTA] Weekly Blue release already sent for week {current_week}. Skipping {os.path.basename(file_path)}")
+                        return
+                elif "LABS" in path_upper:
+                    action_label = f"◈ LABS: {clean_name}"
+                    
+                    # WEEKLY QUOTA CHECK
+                    current_week = datetime.datetime.now().strftime('%Y-%W')
+                    quota_data = {}
+                    if os.path.exists(QUOTA_FILE):
+                        try:
+                            with open(QUOTA_FILE, 'r') as f:
+                                quota_data = json.load(f)
+                        except: pass
+                    
+                    if quota_data.get("weekly_labs_sent") == current_week:
+                        log_msg(f"◈ [QUOTA] Weekly Labs release already sent for week {current_week}. Skipping {os.path.basename(file_path)}")
+                        return
                 else:
                     action_label = clean_name
 
@@ -624,6 +837,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                     elif "DEER" in project_name.upper():
                         software = "Photoshop"
                 except: pass
+
+            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
 
             # 2. CAPTURE VISION / VIDEO / AUDIO / IMAGE (Synchronous)
             asset_url = ""
@@ -664,6 +879,21 @@ class HeartbeatHandler(FileSystemEventHandler):
                             file_options={"content-type": content_type}
                         )
                         asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
+                        
+                        # 2nd Upload for Social (Full Length for Buffer)
+                        full_asset_url = asset_url # Default
+                        if is_social_folder and is_video:
+                            try:
+                                log_msg(f">>> [SOCIAL] Uploading full-length version for Buffer...")
+                                full_storage_path = f"social/{int(time.time())}_full{file_ext}"
+                                with open(file_path, 'rb') as f_full:
+                                    supabase.storage.from_('studio-assets').upload(
+                                        full_storage_path, f_full.read(),
+                                        file_options={"content-type": content_type}
+                                    )
+                                full_asset_url = supabase.storage.from_('studio-assets').get_public_url(full_storage_path)
+                            except Exception as e:
+                                log_msg(f"[SOCIAL UPLOAD ERROR] {e}")
                     
                 except Exception as e:
                     log_msg(f"[IMAGING/VIDEO ERROR] {e}")
@@ -671,7 +901,8 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 3. CHANNEL IDENTIFICATION (Hierarchical Brand Check)
             channel_id = "INNOV8"
             buffer_profile = BUFFER_PROFILE_ID_MAIN
-            path_parts = [p.upper() for p in file_path.split(os.sep)]
+            # Robust split handling both \ and /
+            path_parts = [p.upper() for p in file_path.replace("\\", "/").split("/")]
             
             if "LANNA" in path_parts:
                 channel_id = "LANNA"
@@ -683,8 +914,23 @@ class HeartbeatHandler(FileSystemEventHandler):
                 channel_id = "INNOV8"
                 buffer_profile = BUFFER_PROFILE_ID_MAIN
 
+            # 4. PRE-SYNC QUOTA CHECK FOR LANNA (Prevent Website Spam)
+            if channel_id == "LANNA" and is_social_folder:
+                try:
+                    width, height = get_video_dimensions(file_path)
+                    is_vert = height > width
+                    q_type = ("REEL" if is_video else "STORY") if is_vert else "GRID"
+                    
+                    today = datetime.datetime.now().strftime('%Y-%m-%d')
+                    if os.path.exists(QUOTA_FILE):
+                        with open(QUOTA_FILE, 'r') as f:
+                            q_data = json.load(f)
+                        if q_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 1:
+                            log_msg(f"◈ [QUOTA] Website sync skipped for LANNA {q_type} (Daily slot already filled).")
+                            return
+                except: pass
+
             # 4. DISPATCH FULL PULSE TO SUPABASE (CHANNEL-AWARE)
-            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]"])
             status_text = "Social active." if is_social_folder else "Neural link active."
             # Data structure: mood|status|url|software|quote|channel_id
             data = {
@@ -696,14 +942,97 @@ class HeartbeatHandler(FileSystemEventHandler):
             }
             
             log_msg(f">>> [SYNC] Dispatching pulse for {project_name} via {software} (Channel: {channel_id})...")
-            res = supabase.table("studio_heartbeat").insert(data).execute()
-            
-            if res.data:
+            if insert_pulse_to_supabase(
+                project_name=project_name,
+                action_label=action_label,
+                asset_url=asset_url,
+                mood=mood,
+                software=software,
+                quote=quote,
+                channel_id=channel_id,
+                is_milestone=(is_video or is_audio or software == "Premiere Pro" or software == "Photoshop"),
+                is_social=is_social_folder
+            ):
                 log_msg(f">>> [SYNC] SUCCESS! Vision Linked: {asset_url}")
             else:
                 log_msg(">>> [SYNC ERROR] Insert failed.")
 
-            if is_video or is_audio:
+            if "MEMORIES" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "LANNA" in path_upper:
+                # SPECIALIZED BROADCAST (Main Feed, Once a Week)
+                log_msg(f">>> [SOCIAL RELEASE] Dispatching weekly pulse to Buffer...")
+                
+                # Update weekly quota (before broadcast to ensure lock)
+                try:
+                    quota_data = {}
+                    if os.path.exists(QUOTA_FILE):
+                        with open(QUOTA_FILE, 'r') as f:
+                            quota_data = json.load(f)
+                    
+                    current_week = datetime.datetime.now().strftime('%Y-%W')
+                    
+                    if "MEMORIES" in path_upper:
+                        quota_data["weekly_memory_sent"] = current_week
+                        # Update sequence index
+                        try:
+                            import re
+                            filename = os.path.splitext(os.path.basename(file_path))[0]
+                            match = re.search(r'^(\d+)', filename)
+                            if match:
+                                quota_data["last_memory_index"] = int(match.group(1))
+                        except: pass
+                    elif "BLUE" in path_upper:
+                        quota_data["weekly_blue_sent"] = current_week
+                    elif "LABS" in path_upper:
+                        quota_data["weekly_labs_sent"] = current_week
+
+                    with open(QUOTA_FILE, 'w') as f:
+                        json.dump(quota_data, f)
+                except: pass
+
+                # Buffer Dispatch (Main Grid Post) - BYPASS DAILY QUOTA for weekly special
+                msg = f"{action_label}"
+                asset_is_video = asset_url.lower().endswith(('.mp4', '.mov'))
+                
+                if "MEMORIES" in path_upper:
+                    broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
+                elif "BLUE" in path_upper:
+                    # BLUE SPECIAL ROUTING
+                    width, height = get_video_dimensions(file_path)
+                    is_vertical = height > width
+                    is_square = abs(width - height) < (width * 0.1)
+                    
+                    if is_vertical:
+                        # 1. YouTube Blue (Shorts)
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_url], is_video=True, post_type="REEL", bypass_quota=True, platform="youtube")
+                        # 2. Instagram Main (Reels)
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=True, post_type="REEL", bypass_quota=True, platform="instagram")
+                    elif is_square:
+                        # 1. Instagram Main (Grid Post)
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True, platform="instagram")
+                elif "LABS" in path_upper:
+                    # LABS SPECIAL ROUTING (Instagram Only)
+                    width, height = get_video_dimensions(file_path)
+                    is_vertical = height > width
+                    
+                    if is_vertical:
+                        target_type = "REEL" if is_video else "STORY"
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=target_type, bypass_quota=True)
+                    else:
+                        # Square/Horizontal
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type="GRID", bypass_quota=True)
+                elif "LANNA" in path_upper:
+                    # LANNA SPECIAL ROUTING (Daily Quota applies)
+                    width, height = get_video_dimensions(file_path)
+                    is_vertical = height > width
+                    
+                    if is_vertical:
+                        target_type = "REEL" if is_video else "STORY"
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_url], is_video=is_video, post_type=target_type, bypass_quota=False)
+                    else:
+                        # Square/Horizontal
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_url], is_video=is_video, post_type="GRID", bypass_quota=False)
+                
+            elif is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
                 width, height = get_video_dimensions(file_path)
                 is_square = abs(width - height) < (width * 0.1)
@@ -750,7 +1079,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                     log_msg(f"[STORY SYNC ERROR] {e}")
                 
             # --- FINAL CLEANUP ---
-            if asset_file and ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file or "image_pulse_" in asset_file) and os.path.exists(asset_file):
+            # Don't delete if it's the original file!
+            if asset_file and asset_file != file_path and ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file or "image_pulse_" in asset_file) and os.path.exists(asset_file):
                 try:
                     os.remove(asset_file)
                 except: pass

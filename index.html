@@ -69,13 +69,18 @@
             filter: brightness(1) !important;
         }
 
-        /* CHANNEL THEMES */
-        .channel-lanna { --accent-color: #ff99cc !important; border-color: rgba(255, 153, 204, 0.3) !important; }
-        .channel-blue  { --accent-color: #00ccff !important; border-color: rgba(0, 204, 255, 0.3) !important; }
-        .channel-innov8 { --accent-color: #BF00FF !important; border-color: rgba(191, 0, 255, 0.3) !important; }
+        /* CHANNEL THEMES (Refined Brands) */
+        .channel-lanna  { --accent-color: #ffd700 !important; --glow: 0 0 25px rgba(255, 215, 0, 0.4); } /* GOLD */
+        .channel-blue   { --accent-color: #00ccff !important; --glow: 0 0 25px rgba(0, 204, 255, 0.4); } /* BLUE */
+        .channel-innov8 { --accent-color: #00ffaa !important; --glow: 0 0 25px rgba(0, 255, 170, 0.4); } /* TEAL */
+
+        /* POST TYPE SHADES (Complimentary) */
+        .post-story { filter: hue-rotate(15deg) brightness(1.1); }
+        .post-reel  { filter: hue-rotate(-15deg) contrast(1.2); }
+        .post-grid  { filter: none; }
 
         .cinematic-mode .card-logo {
-            opacity: 0.4; /* Semi-transparent as requested */
+            opacity: 0.75; /* Increased visibility as requested */
             z-index: 100;
             width: 140px;
             filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
@@ -1063,8 +1068,13 @@
                              (data.project_name || '').toUpperCase().includes('[PULSE]') || 
                              (data.action_label || '').includes('◈');
 
+            // Determine Post Type Class
+            let postTypeClass = 'post-grid';
+            if (isHero) postTypeClass = 'post-reel';
+            else if ((data.action_label || '').includes('Story')) postTypeClass = 'post-story';
+
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''} channel-${channelId.toLowerCase()}`;
+            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''} channel-${channelId.toLowerCase()} ${postTypeClass}`;
             
             // Channel Branding Map
             const channelBranding = {
