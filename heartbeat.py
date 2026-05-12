@@ -14,6 +14,7 @@ import datetime
 from dotenv import load_dotenv
 import sys
 from openai import OpenAI
+import shutil
 
 # Load environment variables with absolute path
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -49,6 +50,9 @@ DEBOUNCE_SECONDS = 5.0 # Increased responsiveness
 DAILY_BUFFER_LIMIT = 8  # Safe limit for Free Plan
 QUOTA_FILE = "buffer_quota.json"
 NETWORK_TIMEOUT = 15
+PENDING_DIR = os.path.join(BASE_DIR, "PENDING_BROADCAST")
+for d in ["CAROUSELS", "POSTS"]:
+    os.makedirs(os.path.join(PENDING_DIR, d), exist_ok=True)
 
 # Global cache to persist across observer restarts
 last_sent_cache = {}
@@ -594,7 +598,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except: pass
             
             if quota_data.get("weekly_lanna_carousel_sent") == current_week:
-                log_msg(f"◈ [QUOTA] Weekly Lanna Carousel already sent. Skipping {os.path.basename(folder_path)}")
+                log_msg(f"◈ [QUOTA] Weekly Lanna Carousel already sent. Moving {os.path.basename(folder_path)} to Pending.")
+                try:
+                    target = os.path.join(PENDING_DIR, "CAROUSELS", os.path.basename(folder_path))
+                    if os.path.exists(target): shutil.rmtree(target)
+                    shutil.move(folder_path, target)
+                except Exception as e: log_msg(f"[QUEUE ERROR] {e}")
                 return
             
             # 1. Folder Stability Wait
@@ -926,7 +935,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                         with open(QUOTA_FILE, 'r') as f:
                             q_data = json.load(f)
                         if q_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 1:
-                            log_msg(f"◈ [QUOTA] Website sync skipped for LANNA {q_type} (Daily slot already filled).")
+                            log_msg(f"◈ [QUOTA] Lanna Daily full. Moving {os.path.basename(file_path)} to Pending.")
+                            try:
+                                target = os.path.join(PENDING_DIR, "POSTS", os.path.basename(file_path))
+                                shutil.move(file_path, target)
+                            except Exception as e: log_msg(f"[QUEUE ERROR] {e}")
                             return
                 except: pass
 
@@ -1302,6 +1315,52 @@ def schedule_cleanup():
     # Reschedule for tomorrow
     threading.Timer(86400, schedule_cleanup).start()
 
+def process_backlog(handler):
+    """Checks the PENDING_BROADCAST directory and releases items if quota is available."""
+    try:
+        current_week = datetime.datetime.now().strftime('%Y-%W')
+        today = datetime.datetime.now().strftime('%Y-%m-%d')
+        
+        # 1. Check Carousels
+        carousel_pending = sorted([os.path.join(PENDING_DIR, "CAROUSELS", d) for d in os.listdir(os.path.join(PENDING_DIR, "CAROUSELS"))], key=os.path.getmtime)
+        if carousel_pending:
+            quota_data = {}
+            if os.path.exists(QUOTA_FILE):
+                with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+            if quota_data.get("weekly_lanna_carousel_sent") != current_week:
+                folder = carousel_pending[0]
+                log_msg(f"◈ [BACKLOG] Releasing Carousel: {os.path.basename(folder)}")
+                # Move back to LANNA to process naturally
+                dest = os.path.join(WATCH_PATH, "SOCIAL", "LANNA", os.path.basename(folder))
+                if os.path.exists(dest): shutil.rmtree(dest)
+                shutil.move(folder, dest)
+                handler.dispatch_carousel(dest)
+
+        # 2. Check Daily Posts
+        posts_pending = sorted([os.path.join(PENDING_DIR, "POSTS", f) for f in os.listdir(os.path.join(PENDING_DIR, "POSTS"))], key=os.path.getmtime)
+        for post_path in posts_pending:
+            # Determine type
+            is_vid = post_path.lower().endswith(('.mp4', '.mov'))
+            width, height = get_video_dimensions(post_path)
+            is_vert = height > width
+            q_type = ("REEL" if is_vid else "STORY") if is_vert else "GRID"
+            
+            quota_data = {}
+            if os.path.exists(QUOTA_FILE):
+                with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+            
+            if quota_data.get(today, {}).get(BUFFER_PROFILE_ID_LANNA, {}).get(q_type, 0) < 1:
+                log_msg(f"◈ [BACKLOG] Releasing {q_type}: {os.path.basename(post_path)}")
+                dest = os.path.join(WATCH_PATH, "SOCIAL", "LANNA", os.path.basename(post_path))
+                shutil.move(post_path, dest)
+                # This will trigger on_modified naturally, but let's call it to be sure
+                # Actually, on_modified will fire. We just need to make sure we don't double-call.
+                # Just moving it back is enough.
+                break
+
+    except Exception as e:
+        log_msg(f"[BACKLOG ERROR] {e}")
+
 if __name__ == "__main__":
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
     log_msg(f"Initializing Studio Pulse Vision Pipeline... (PID: {os.getpid()})")
@@ -1322,6 +1381,10 @@ if __name__ == "__main__":
 
     # Start the maintenance schedule
     schedule_cleanup()
+    
+    # Initial Backlog Check
+    event_handler = HeartbeatHandler()
+    process_backlog(event_handler)
 
     while True:
         try:
@@ -1336,6 +1399,7 @@ if __name__ == "__main__":
                 now = int(time.time())
                 if now % 120 < 1: # Capture every 2 mins
                     log_msg("◈ [STATUS] Heartbeat Active and Monitoring.")
+                    process_backlog(event_handler)
                     time.sleep(1) # Prevent double logging
                 time.sleep(1)
                 
