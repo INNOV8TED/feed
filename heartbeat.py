@@ -1147,49 +1147,60 @@ class HeartbeatHandler(FileSystemEventHandler):
                             except Exception as e: log_msg(f"[QUEUE ERROR] {e}")
                             return
                 except: pass
+            
+            # --- FINGERPRINT LOCK (Prevent Duplicates) ---
+            try:
+                stat = os.stat(file_path)
+                fingerprint = f"{stat.st_size}_{stat.st_mtime}"
+                if fingerprint in fingerprint_cache and is_social_folder:
+                    log_msg(f"◈ [FINGERPRINT] Already pulsed: {os.path.basename(file_path)}. Skipping.")
+                    return
+            except: pass
 
-            # 4. SOCIAL QUOTA & BROADCAST GUARD
-            if is_social_folder or "LANNA" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "MEMORIES" in path_upper:
+                # 3. QUOTA CHECK (Website & Buffer)
                 today = datetime.datetime.now().strftime('%Y-%m-%d')
                 width, height = get_video_dimensions(file_path)
                 is_vertical = height > width
                 q_type = ("REEL" if is_video else "STORY") if is_vertical else "GRID"
-                
-                # SPECIAL CASE: MEMORIES are always GRID
                 if "MEMORIES" in path_upper: q_type = "GRID"
                 
-                quota_data = {}
-                if os.path.exists(QUOTA_FILE):
-                    try:
-                        with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
-                    except: pass
-                
-                # If quota is full, STOP HERE (Silent skip to prevent flood)
-                if not ("MEMORIES" in path_upper or "BLUE" in path_upper) and quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 2:
-                    log_msg(f"◈ [QUOTA] Social buffer full for {channel_id} {q_type}. Skipping pulse.")
-                    return
-                
-                # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
-                log_msg(f">>> [SOCIAL] Verified Quota. Dispatching pulse: {action_label}")
-                insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
-                
-                # 6. UPDATE INTERNAL QUOTA
-                try:
-                    if today not in quota_data: quota_data[today] = {}
-                    if buffer_profile not in quota_data[today]: quota_data[today][buffer_profile] = {}
-                    quota_data[today][buffer_profile][q_type] = quota_data[today][buffer_profile].get(q_type, 0) + 1
+                # Global Lock for Quota Sync
+                with threading.Lock():
+                    quota_data = {}
+                    if os.path.exists(QUOTA_FILE):
+                        try:
+                            with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
+                        except: pass
                     
-                    # Memories Weekly Sequence
-                    if "MEMORIES" in path_upper:
-                        import re
-                        current_week = datetime.datetime.now().strftime('%Y-%W')
-                        quota_data["weekly_memory_sent"] = current_week
-                        match = re.search(r'^(\d+)', filename)
-                        if match: quota_data["last_memory_index"] = int(match.group(1))
+                    if not ("MEMORIES" in path_upper or "BLUE" in path_upper) and quota_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 2:
+                        log_msg(f"◈ [QUOTA] Social buffer full for {channel_id} {q_type}. Skipping pulse.")
+                        return
+                    
+                    # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
+                    log_msg(f">>> [SOCIAL] Verified Quota. Dispatching pulse: {action_label}")
+                    insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
+                    
+                    # 6. UPDATE INTERNAL QUOTA & CACHE
+                    try:
+                        if today not in quota_data: quota_data[today] = {}
+                        if buffer_profile not in quota_data[today]: quota_data[today][buffer_profile] = {}
+                        quota_data[today][buffer_profile][q_type] = quota_data[today][buffer_profile].get(q_type, 0) + 1
+                        
+                        # Memories Weekly Sequence
+                        if "MEMORIES" in path_upper:
+                            import re
+                            current_week = datetime.datetime.now().strftime('%Y-%W')
+                            quota_data["weekly_memory_sent"] = current_week
+                            match = re.search(r'^(\d+)', filename)
+                            if match: quota_data["last_memory_index"] = int(match.group(1))
 
-                    with open(QUOTA_FILE, 'w') as f:
-                        json.dump(quota_data, f)
-                except: pass
+                        with open(QUOTA_FILE, 'w') as f:
+                            json.dump(quota_data, f)
+                        
+                        # Update Fingerprint Cache (Persist)
+                        fingerprint_cache[fingerprint] = time.time()
+                        save_cache()
+                    except: pass
 
                 # 7. BUFFER DISPATCH
                 if "MEMORIES" in path_upper:
