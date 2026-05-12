@@ -139,6 +139,24 @@ WORKFLOW_MAP = {
     ".mov":    {"category": "render",  "mood": "accomplished"}
 }
 
+def generate_and_upload_thumbnail(video_path):
+    """Extracts a frame from a video and uploads it as a thumbnail."""
+    try:
+        temp_thumb = f"thumb_temp_{int(time.time())}.jpg"
+        # Extract frame at 1 second
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:01', '-vframes', '1', temp_thumb]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        if os.path.exists(temp_thumb):
+            url = upload_to_supabase(temp_thumb, "thumbnails")
+            try: os.remove(temp_thumb)
+            except: pass
+            return url
+        return None
+    except Exception as e:
+        log_msg(f"[THUMB ERROR] {e}")
+        return None
+
 def upload_to_supabase(file_path, folder="pulses"):
     """Helper to upload a file to Supabase and return the public URL."""
     try:
@@ -253,11 +271,18 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
     videos = []
     
     if asset_urls:
-        if isinstance(asset_urls, str): asset_urls = [asset_urls]
-        for a_url in asset_urls:
+        if isinstance(asset_urls, str): asset_urls = [{"url": asset_urls}]
+        for item in asset_urls:
+            # item can be a string (URL) or a dict {"url": ..., "thumbnail": ...}
+            a_url = item["url"] if isinstance(item, dict) else item
+            a_thumb = item.get("thumbnail") if isinstance(item, dict) else None
+            
             is_vid = a_url.lower().endswith(('.mp4', '.mov'))
             if is_vid:
-                videos.append({"url": a_url, "thumbnailUrl": f"{a_url}?v=thumb"})
+                videos.append({
+                    "url": a_url, 
+                    "thumbnailUrl": a_thumb if a_thumb else f"{a_url}?v=thumb"
+                })
             else:
                 images.append({"url": a_url})
     
@@ -635,19 +660,24 @@ class HeartbeatHandler(FileSystemEventHandler):
             log_msg(f">>> [CAROUSEL] Dispatching {len(media_files)} items from {os.path.basename(folder_path)}...")
             
             # 3. Upload All to Supabase
-            asset_urls = []
+            asset_data = []
             for f in sorted(media_files): # Ensure order
                 url = upload_to_supabase(f, "pulses")
-                if url: asset_urls.append(url)
+                if url:
+                    item = {"url": url}
+                    if f.lower().endswith(('.mp4', '.mov')):
+                        thumb = generate_and_upload_thumbnail(f)
+                        if thumb: item["thumbnail"] = thumb
+                    asset_data.append(item)
             
-            if not asset_urls: return
+            if not asset_data: return
             
             # 4. Sync to Website Feed (Pulse) - Use first asset as cover
-            if asset_urls:
+            if asset_data:
                 insert_pulse_to_supabase(
                     project_name="Lanna Whispers",
                     action_label="Collection",
-                    asset_url=asset_urls[0],
+                    asset_url=asset_data[0]["url"],
                     channel_id="LANNA",
                     is_social=True
                 )
@@ -655,7 +685,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 5. Dispatch to Buffer
             folder_name = os.path.basename(folder_path)
             msg = f"◈ LANNA WHISPERS: {folder_name} (Collection) ◈"
-            success = broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=asset_urls, post_type="GRID", bypass_quota=True)
+            success = broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=asset_data, post_type="GRID", bypass_quota=True)
             
             if success:
                 # 6. Update Quota
@@ -1048,10 +1078,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                         # 1. YouTube Blue (Shorts)
                         broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[full_asset_url], is_video=True, post_type="REEL", bypass_quota=True, platform="youtube")
                         # 2. Instagram Main (Reels)
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=True, post_type="REEL", bypass_quota=True, platform="instagram")
+                        thumb = generate_and_upload_thumbnail(active_source) if asset_is_video else None
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=True, post_type="REEL", bypass_quota=True, platform="instagram")
                     elif is_square:
                         # 1. Instagram Main (Grid Post)
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True, platform="instagram")
+                        thumb = generate_and_upload_thumbnail(active_source) if asset_is_video else None
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=asset_is_video, post_type="GRID", bypass_quota=True, platform="instagram")
                 elif "LABS" in path_upper:
                     # LABS SPECIAL ROUTING (Instagram Only)
                     width, height = get_video_dimensions(file_path)
@@ -1070,10 +1102,12 @@ class HeartbeatHandler(FileSystemEventHandler):
                     
                     if is_vertical:
                         target_type = "REEL" if is_video else "STORY"
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_url], is_video=is_video, post_type=target_type, bypass_quota=False)
+                        thumb = generate_and_upload_thumbnail(active_source) if is_video else None
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type=target_type, bypass_quota=False)
                     else:
                         # Square/Horizontal
-                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_url], is_video=is_video, post_type="GRID", bypass_quota=False)
+                        thumb = generate_and_upload_thumbnail(active_source) if is_video else None
+                        broadcast_to_buffer(msg, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": full_asset_url, "thumbnail": thumb}], is_video=is_video, post_type="GRID", bypass_quota=False)
                 
             elif is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
