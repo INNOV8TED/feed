@@ -566,6 +566,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                         f_size = os.path.getsize(file_path)
                         if last_size_cache.get(file_path) == f_size:
                             # Already in cache from previous session
+                            log_msg(f">>> [HISTORY GUARD] Skipping already indexed file: {os.path.basename(file_path)}")
                             return
                         last_size_cache[file_path] = f_size
                         save_cache()
