@@ -10,6 +10,7 @@ import random
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from supabase import create_client
+import uuid
 import datetime
 from dotenv import load_dotenv
 import sys
@@ -153,9 +154,10 @@ WORKFLOW_MAP = {
 def generate_and_upload_thumbnail(video_path):
     """Extracts a frame from a video and uploads it as a thumbnail."""
     try:
-        temp_thumb = f"thumb_temp_{int(time.time())}.jpg"
-        # Extract thumbnail at 15 seconds (to bypass long intros and ensure visual rich previews)
-        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:15', '-vframes', '1', temp_thumb]
+        unique_id = uuid.uuid4().hex[:8]
+        temp_thumb = f"thumb_temp_{unique_id}.jpg"
+        # Extract thumbnail at 2 seconds
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:02', '-vframes', '1', temp_thumb]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if os.path.exists(temp_thumb):
@@ -173,7 +175,8 @@ def upload_to_supabase(file_path, folder="pulses"):
     try:
         with open(file_path, 'rb') as f:
             file_ext = os.path.splitext(file_path)[1].lower()
-            storage_path = f"{folder}/{int(time.time())}_{os.path.basename(file_path)}"
+            unique_id = uuid.uuid4().hex[:8]
+            storage_path = f"{folder}/{unique_id}_{os.path.basename(file_path)}"
             content_type = "video/mp4" if file_ext == ".mp4" else "image/jpeg"
             if file_ext == ".mov": content_type = "video/quicktime"
             if file_ext == ".png": content_type = "image/png"
@@ -1196,7 +1199,10 @@ class HeartbeatHandler(FileSystemEventHandler):
                         log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping SOCIAL broadcast (Website Feed will still pulse).")
                         can_broadcast_social = False
                     else:
-                        can_broadcast_social = True
+                        # ONLY broadcast to social if the system is live (prevent startup spam)
+                        can_broadcast_social = True if self.is_primed else False
+                        if not self.is_primed:
+                            log_msg(f"◈ [ROUTING] Startup discovery: {os.path.basename(file_path)}. Skipping SOCIAL broadcast (Website Feed only).")
                     
                     # SPECIAL CASE: YouTube (BLUE) ONLY supports videos
                     if "BLUE" in path_upper and not is_video:
@@ -1273,8 +1279,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                 msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
                 
                 # --- BUFFER BROADCAST GUARD ---
-                # Only broadcast to Buffer if it's a social release OR the system is in live monitoring mode
-                if is_social_folder or self.is_primed:
+                # ONLY broadcast to Buffer if the system is in live monitoring mode (prevent startup spam)
+                if self.is_primed:
                     # GENERATE THUMBNAIL FOR PULSE
                     thumb = generate_and_upload_thumbnail(asset_file) if (is_video or is_audio) else None
                     broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[{"url": asset_url, "thumbnail": thumb}] if thumb else [asset_url], is_video=True, post_type=target_type)
