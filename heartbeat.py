@@ -1793,12 +1793,21 @@ if __name__ == "__main__":
             
             # PROACTIVE STARTUP SCAN: Ingest existing social content
             log_msg("◈ [STARTUP] Scanning for unsent social content...")
+            # DYNAMIC DISCOVERY: Scan all top-level folders except ignores
+            top_folders = [d for d in os.listdir(WATCH_PATH) if os.path.isdir(os.path.join(WATCH_PATH, d)) and d not in IGNORE_FOLDERS]
+            
+            # Prioritize DFP if it exists, otherwise use discovered list
+            social_paths = []
+            if "DFP" in top_folders:
+                social_paths.append(os.path.join(WATCH_PATH, "DFP"))
+                top_folders.remove("DFP")
+            
+            for f in top_folders:
+                social_paths.append(os.path.join(WATCH_PATH, f))
+            
+            log_msg(f"◈ [DISCOVERY] Monitoring {len(social_paths)} project root paths.")
+            
             processed_folders = set()
-            social_paths = [
-                os.path.join(WATCH_PATH, "SOCIAL"),
-                os.path.join(WATCH_PATH, "MEMORIES"),
-                os.path.join(WATCH_PATH, "LANNA")
-            ]
             for s_path in social_paths:
                 if not os.path.exists(s_path): continue
                 for root, dirs, files in os.walk(s_path):
