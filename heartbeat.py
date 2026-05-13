@@ -1,5 +1,6 @@
 import time
 import os
+import re
 import threading
 import requests
 import pyautogui
@@ -559,6 +560,13 @@ class HeartbeatHandler(FileSystemEventHandler):
             # CORRECT PATH DETECTION (Handle Moves)
             file_path = event.dest_path if hasattr(event, 'dest_path') else event.src_path
             ext = os.path.splitext(file_path)[1].lower().strip()
+            basename = os.path.basename(file_path)
+                
+            # --- SEQUENCE GUARD: Block individual frames from PNG/JPG sequences (e.g., _0001.png) ---
+            if ext in ['.png', '.jpg']:
+                if re.search(r'[\._-]\d{3,}\.', basename) or re.search(r'\d{4,}\.', basename):
+                    log_msg(f"◈ [WATCHER] Sequence detected: {basename}. Skipping individual frame to prevent feed flood.")
+                    return
                 
             # DEEP DEBUG
             log_msg(f"[DEBUG] Ext Seen: '{ext}' | Map Type: {type(WORKFLOW_MAP)}")
