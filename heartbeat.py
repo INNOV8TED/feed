@@ -564,7 +564,9 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
             # --- SEQUENCE GUARD: Block individual frames from PNG/JPG sequences (e.g., _0001.png) ---
             if ext in ['.png', '.jpg']:
-                if re.search(r'[\._-]\d{3,}\.', basename) or re.search(r'\d{4,}\.', basename):
+                # Refined Regex: Look for trailing frame numbers like _0001 or .0001
+                # Must be at least 3 digits and either prefixed by [._- ] or just digits at the end
+                if re.search(r'[\._- ]\d{3,}\.', basename) or re.search(r'^\d{4,}\.', basename):
                     log_msg(f"◈ [WATCHER] Sequence detected: {basename}. Skipping individual frame to prevent feed flood.")
                     return
                 
@@ -606,18 +608,19 @@ class HeartbeatHandler(FileSystemEventHandler):
                 # 1. GLOBAL CACHE CHECK (History Guard)
                 # If we're in startup scan mode, we only pulse if the file is genuinely new to our index.
                 f_size = os.path.getsize(file_path)
-                if last_size_cache.get(file_path) == f_size:
+                f_mtime = os.path.getmtime(file_path)
+                cache_key = f"{f_size}_{f_mtime}"
+                
+                if last_size_cache.get(file_path) == cache_key:
                     if not self.is_primed:
                         # Skip already indexed files during startup
                         log_msg(f">>> [HISTORY GUARD] Skipping already indexed file: {os.path.basename(file_path)}")
                         return
-                    # In real-time mode, we allow re-pulsing if the file was modified but same size? 
-                    # No, usually size changes for renders. 
-                    # Let's keep it simple: if size matches cache, skip.
+                    # In real-time mode, if nothing changed, skip
                     return
                 
-                # Update cache
-                last_size_cache[file_path] = f_size
+                # Update cache with combined key
+                last_size_cache[file_path] = cache_key
                 save_cache()
 
                 # 2. EXCLUSIVE LOCK CHECK (Windows Render Guard)
