@@ -1189,12 +1189,13 @@ class HeartbeatHandler(FileSystemEventHandler):
                     max_total = 1 if channel_id == "BLUE" else 3
                     
                     if total_today >= max_total:
-                        log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping.")
-                        return
-                        
-                    if channel_daily.get(q_type, 0) >= 1:
-                        log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping.")
-                        return
+                        log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping SOCIAL broadcast (Website Feed will still pulse).")
+                        can_broadcast_social = False
+                    elif channel_daily.get(q_type, 0) >= 1:
+                        log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping SOCIAL broadcast (Website Feed will still pulse).")
+                        can_broadcast_social = False
+                    else:
+                        can_broadcast_social = True
                     
                     # SPECIAL CASE: YouTube (BLUE) ONLY supports videos
                     if "BLUE" in path_upper and not is_video:
@@ -1202,9 +1203,15 @@ class HeartbeatHandler(FileSystemEventHandler):
                         return
                     
                     # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
-                    log_msg(f">>> [SOCIAL] Verified Quota. Dispatching pulse: {action_label}")
+                    log_msg(f">>> [WEBSITE] Dispatching pulse: {action_label}")
                     insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
                     
+                    if not can_broadcast_social:
+                        # Fingerprint cache still needs updating to prevent re-pulse of this "Website-only" event
+                        fingerprint_cache[fingerprint] = time.time()
+                        save_cache()
+                        return
+
                     # 6. UPDATE INTERNAL QUOTA & CACHE
                     try:
                         if today not in quota_data: quota_data[today] = {}
@@ -1235,7 +1242,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 elif "LABS" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 elif "LANNA" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_data], is_video=is_video, post_type=q_type, bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 
                 return # CRITICAL: Social ingest ends here.
             
