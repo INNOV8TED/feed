@@ -1755,10 +1755,13 @@ def process_backlog(handler):
                 shutil.move(folder, dest)
                 handler.dispatch_carousel(dest)
 
-        # 2. Check Daily Posts
-        posts_pending = sorted([os.path.join(PENDING_DIR, "POSTS", f) for f in os.listdir(os.path.join(PENDING_DIR, "POSTS"))], key=os.path.getmtime)
+        # 2. Check Daily Posts (Fill Today AND Tomorrow)
+        posts_pending = sorted([os.path.join(PENDING_DIR, "POSTS", f) for f in os.listdir(os.path.join(PENDING_DIR, "POSTS")) if not f.startswith(".")], key=os.path.getmtime)
+        
+        tomorrow = (datetime.datetime.now() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        profiles = [BUFFER_PROFILE_ID_LANNA, BUFFER_PROFILE_ID_MAIN, BUFFER_PROFILE_ID_BLUE]
+        
         for post_path in posts_pending:
-            # Determine type
             is_vid = post_path.lower().endswith(('.mp4', '.mov'))
             width, height = get_video_dimensions(post_path)
             is_vert = height > width
@@ -1768,11 +1771,26 @@ def process_backlog(handler):
             if os.path.exists(QUOTA_FILE):
                 with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
             
-            if quota_data.get(today, {}).get(BUFFER_PROFILE_ID_LANNA, {}).get(q_type, 0) < 2:
-                log_msg(f"◈ [BACKLOG] Releasing {q_type} for tomorrow's queue: {os.path.basename(post_path)}")
-                dest = os.path.join(WATCH_PATH, "SOCIAL", "LANNA", os.path.basename(post_path))
-                shutil.move(post_path, dest)
-                break
+            # Find a profile that needs this type of content
+            released = False
+            for p_id in profiles:
+                # YouTube (BLUE) ONLY supports REELS
+                if p_id == BUFFER_PROFILE_ID_BLUE and q_type != "REEL": continue
+                
+                # Check today AND tomorrow
+                today_count = quota_data.get(today, {}).get(p_id, {}).get(q_type, 0)
+                tomorrow_count = quota_data.get(tomorrow, {}).get(p_id, {}).get(q_type, 0)
+                
+                if today_count < 1 or tomorrow_count < 1:
+                    log_msg(f"◈ [BACKLOG] Releasing {q_type} for {p_id} (Target: {today if today_count < 1 else tomorrow}): {os.path.basename(post_path)}")
+                    # Move to appropriate live monitoring folder to trigger pulse
+                    sub = "LANNA" if p_id == BUFFER_PROFILE_ID_LANNA else "BLUE" if p_id == BUFFER_PROFILE_ID_BLUE else "LABS"
+                    dest = os.path.join(WATCH_PATH, "SOCIAL", sub, os.path.basename(post_path))
+                    shutil.move(post_path, dest)
+                    released = True
+                    break
+            
+            if released: break # Only process one per loop to avoid flooding
         
         # 3. SMART INVENTORY DIAGNOSTIC
         check_inventory_levels()
