@@ -194,6 +194,9 @@ def upload_to_supabase(file_path, folder="pulses"):
             )
             return supabase.storage.from_('studio-assets').get_public_url(storage_path)
     except Exception as e:
+        if '409' in str(e) or 'Duplicate' in str(e):
+            # Fallback to getting the public URL for the existing resource
+            return supabase.storage.from_('studio-assets').get_public_url(storage_path)
         log_msg(f"[SUPABASE UPLOAD ERROR] {e}")
         return None
 
@@ -1219,7 +1222,7 @@ class HeartbeatHandler(FileSystemEventHandler):
 
                 # 7. BUFFER DISPATCH
                 if "MEMORIES" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=asset_is_video, post_type="GRID", bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": full_asset_url, "thumbnail": social_thumb}], is_video=is_video, post_type="REEL", bypass_quota=True, platform="youtube")
                 elif "LABS" in path_upper:
@@ -1228,8 +1231,22 @@ class HeartbeatHandler(FileSystemEventHandler):
                     broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_data], is_video=is_video, post_type=q_type, bypass_quota=True)
                 
                 return # CRITICAL: Social ingest ends here.
-                
-            elif is_video or is_audio:
+            
+            # --- STANDARD STUDIO PULSE (Non-Social / DFP / Projects) ---
+            log_msg(f">>> [PULSE] Dispatching standard studio event: {project_name}")
+            insert_pulse_to_supabase(
+                project_name=project_name, 
+                action_label=action_label, 
+                asset_url=asset_url, 
+                mood=mood, 
+                software=software, 
+                quote=quote, 
+                channel_id=channel_id, 
+                is_milestone=False, 
+                is_social=False
+            )
+            
+            if is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
                 width, height = get_video_dimensions(file_path)
                 is_square = abs(width - height) < (width * 0.1)
@@ -1239,6 +1256,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
                 media_type = "Sound" if is_audio else "Visual"
                 msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
+                
                 # GENERATE THUMBNAIL FOR PULSE
                 thumb = generate_and_upload_thumbnail(asset_file) if (is_video or is_audio) else None
                 broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[{"url": asset_url, "thumbnail": thumb}] if thumb else [asset_url], is_video=True, post_type=target_type)
