@@ -469,6 +469,38 @@ def convert_image_to_video(image_path):
         log_msg(f"[IMG->VID ERROR] {e}")
         return None
 
+def format_video_vertical(input_path):
+    """Ensures video is vertical (1080x1920) using blurry background padding."""
+    try:
+        width, height = get_video_dimensions(input_path)
+        if height > width: return input_path # Already vertical
+        
+        unique_id = uuid.uuid4().hex[:8]
+        output_file = f"vertical_{unique_id}.mp4"
+        log_msg(f"◈ [VERTICAL] Formatting {os.path.basename(input_path)} for Reels (1080x1920)...")
+        
+        # FFmpeg: Blurry background padding to 9:16
+        # 1. Scale background to fill 1080x1920 and blur
+        # 2. Scale foreground to fit inside 1080x1920
+        # 3. Overlay foreground on background
+        cmd = [
+            'ffmpeg', '-y', '-i', input_path,
+            '-vf', (
+                "split[bg][fg];"
+                "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:10[bg_blurred];"
+                "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[fg_scaled];"
+                "[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2"
+            ),
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k', # Ensure audio is AAC for social
+            output_file
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_file
+    except Exception as e:
+        log_msg(f"[VERTICAL CONVERSION ERROR] {e}")
+        return input_path
+
 class HeartbeatHandler(FileSystemEventHandler):
     def __init__(self):
         self.is_primed = False
@@ -1172,8 +1204,13 @@ class HeartbeatHandler(FileSystemEventHandler):
             if is_social_folder or "LANNA" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "MEMORIES" in path_upper:
                 today = datetime.datetime.now().strftime('%Y-%m-%d')
                 width, height = get_video_dimensions(file_path)
-                is_vertical = height > width
-                q_type = ("REEL" if is_video else "STORY") if is_vertical else "GRID"
+                # FORCE REEL for all videos, STORY for vertical images, GRID for others
+                if is_video:
+                    q_type = "REEL"
+                else:
+                    is_vertical = height > width
+                    q_type = "STORY" if is_vertical else "GRID"
+                
                 if "MEMORIES" in path_upper: q_type = "GRID"
                 
                 # Global Lock for Quota Sync
@@ -1241,15 +1278,26 @@ class HeartbeatHandler(FileSystemEventHandler):
                         save_cache()
                     except: pass
 
+                # 6.5 FORMATTING & THUMBNAILS FOR SOCIAL
+                dispatch_url = full_asset_url
+                social_thumb = None
+                if is_video:
+                    formatted_path = format_video_vertical(file_path)
+                    if formatted_path != file_path:
+                        dispatch_url = upload_to_supabase(formatted_path, "formatted")
+                        try: os.remove(formatted_path)
+                        except: pass
+                    social_thumb = generate_and_upload_thumbnail(file_path)
+
                 # 7. BUFFER DISPATCH
                 if "MEMORIES" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type="GRID", bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}] if social_thumb else [dispatch_url], is_video=is_video, post_type="GRID", bypass_quota=True)
                 elif "BLUE" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": full_asset_url, "thumbnail": social_thumb}], is_video=is_video, post_type="REEL", bypass_quota=True, platform="youtube")
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}], is_video=is_video, post_type="REEL", bypass_quota=True, platform="youtube")
                 elif "LABS" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}] if social_thumb else [dispatch_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 elif "LANNA" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[full_asset_url], is_video=is_video, post_type=q_type, bypass_quota=True)
+                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}] if social_thumb else [dispatch_url], is_video=is_video, post_type=q_type, bypass_quota=True)
                 
                 return # CRITICAL: Social ingest ends here.
             
