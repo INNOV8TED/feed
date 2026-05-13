@@ -103,7 +103,7 @@ def save_cache():
     except:
         pass
 
-load_cache()
+# Cache loaded in main
 
 # ECHO-ZERO LOCK
 last_broadcast_time = 0
@@ -1187,6 +1187,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                     
                     # Blue is limited to 1 total per day, others 3 (Matching Expanded Buffer Schedule)
                     max_total = 1 if channel_id == "BLUE" else 3
+                    can_broadcast_social = False
                     
                     if total_today >= max_total:
                         log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping SOCIAL broadcast (Website Feed will still pulse).")
@@ -1807,20 +1808,8 @@ if __name__ == "__main__":
         print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
         exit(1)
         
-    # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
-    log_msg(f"Initializing Studio Pulse Vision Pipeline... (PID: {os.getpid()})")
-    log_msg(f"Watch Path: {WATCH_PATH}")
     load_cache()
-    log_msg(f"[STARTUP] Absolute Watch Path: {os.path.abspath(WATCH_PATH)}")
-    for root, dirs, files in os.walk(WATCH_PATH):
-        if any(ignore in root for ignore in IGNORE_FOLDERS): continue
-        for f in files:
-            ext = os.path.splitext(f)[1].lower().strip()
-            if any(key in ext for key in WORKFLOW_MAP):
-                path = os.path.join(root, f)
-                try: last_size_cache[path] = os.path.getsize(path)
-                except: pass
-    log_msg(f"Primed {len(last_size_cache)} project files.")
+    log_msg("◈ [STARTUP] Discovery Engine Active. Indexing new activity...")
 
     # Redirect stderr to log for capturing silent crashes (line-buffered)
     sys.stderr = open("heartbeat.log", "a", encoding='utf-8', buffering=1)
