@@ -560,18 +560,23 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             if workflow:
                 # --- ACTIVE INTENTION CHECK (Stability & Locking) ---
-                # 1. GLOBAL CACHE CHECK (Prevent Re-pulsing Historical Files)
-                if not self.is_primed:
-                    try:
-                        f_size = os.path.getsize(file_path)
-                        if last_size_cache.get(file_path) == f_size:
-                            # Already in cache from previous session
-                            log_msg(f">>> [HISTORY GUARD] Skipping already indexed file: {os.path.basename(file_path)}")
-                            return
-                        last_size_cache[file_path] = f_size
-                        save_cache()
-                    except: pass
+                # 1. GLOBAL CACHE CHECK (History Guard)
+                # If we're in startup scan mode, we only pulse if the file is genuinely new to our index.
+                f_size = os.path.getsize(file_path)
+                if last_size_cache.get(file_path) == f_size:
+                    if not self.is_primed:
+                        # Skip already indexed files during startup
+                        log_msg(f">>> [HISTORY GUARD] Skipping already indexed file: {os.path.basename(file_path)}")
+                        return
+                    # In real-time mode, we allow re-pulsing if the file was modified but same size? 
+                    # No, usually size changes for renders. 
+                    # Let's keep it simple: if size matches cache, skip.
+                    return
                 
+                # Update cache
+                last_size_cache[file_path] = f_size
+                save_cache()
+
                 # 2. EXCLUSIVE LOCK CHECK (Windows Render Guard)
                 # If Media Encoder is rendering, it has a write-lock.
                 try:
@@ -1434,11 +1439,11 @@ def generate_audio_visualizer(audio_path, full_length=False, is_song=True):
             if has_lyrics and os.path.exists(srt_file):
                 filter_complex += f"[v]subtitles='{escaped_srt}':force_style='FontName=Arial Black,Alignment=10,FontSize=20,OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=0'[v]"
             else:
-                filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':font='Arial Black':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
+                filter_complex += f"[v]drawtext=text='INSTRUMENTAL PULSE':font='Arial Black':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2:alpha=0.6:box=1:boxcolor=black@0.4:boxborderw=20[v]"
         else:
             # Green Peak Waveform for Podcasts/Clients
             filter_complex = f"[0:a]showwaves=s=1080x1920:mode=cline:colors=0x00FF00[v];"
-            filter_complex += f"[v]drawtext=text='STUDIO AUDIO LOG':font='Arial':fontcolor=0x00FF00:fontsize=48:x=(w-text_w)/2:y=100:alpha=0.8:box=1:boxcolor=black@0.6:boxborderw=20[v]"
+            filter_complex += f"[v]drawtext=text='STUDIO AUDIO LOG':font='Arial':fontcolor=0x00FF00:fontsize=36:x=(w-text_w)/2:y=100:alpha=0.8:box=1:boxcolor=black@0.6:boxborderw=20[v]"
         
         cmd = [
             'ffmpeg', '-y', '-ss', str(start), '-t', str(t), '-i', audio_path,
@@ -1859,7 +1864,6 @@ if __name__ == "__main__":
                             log_msg(f"◈ [INGEST] Carousel detected: {os.path.basename(root)}")
                             mock_event = type('obj', (object,), {'src_path': os.path.join(root, files[0]), 'is_directory': False})
                             event_handler.process_event(mock_event)
-                            time.sleep(2)
                             continue
                     
                     # SHUFFLE FILES FOR CONTENT VARIETY
@@ -1874,7 +1878,8 @@ if __name__ == "__main__":
                             path = os.path.join(root, f)
                             mock_event = type('obj', (object,), {'src_path': path, 'is_directory': False})
                             event_handler.process_event(mock_event)
-                            time.sleep(2) # Prevent flood
+                            # Only sleep if it was a real pulse (handled inside process_event now)
+                            continue
             
             observer = Observer()
             observer.schedule(event_handler, WATCH_PATH, recursive=True)
