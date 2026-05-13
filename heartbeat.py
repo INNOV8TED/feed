@@ -112,8 +112,7 @@ BROADCAST_LOCK_PERIOD = 20
 pending_timers = {}
 recent_pulse_lock = {} # {path: timestamp} to prevent duplicates
 
-# --- SINGLETON LOCK ---
-import msvcrt
+# Singleton handles
 lock_file_handle = None
 
 def get_lock():
@@ -126,15 +125,6 @@ def get_lock():
         return True
     except:
         return False
-
-if not get_lock():
-    # Only print to console as log might not be ready
-    print(f"Another instance of heartbeat.py is already running. (Lock: {LOCK_PATH})")
-    exit(0)
-
-if not URL or not KEY:
-    print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
-    exit(1)
 
 # Expanded Label Pool for Variety
 LABEL_POOL = {
@@ -570,7 +560,18 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             if workflow:
                 # --- ACTIVE INTENTION CHECK (Stability & Locking) ---
-                # 1. EXCLUSIVE LOCK CHECK (Windows Render Guard)
+                # 1. GLOBAL CACHE CHECK (Prevent Re-pulsing Historical Files)
+                if not self.is_primed:
+                    try:
+                        f_size = os.path.getsize(file_path)
+                        if last_size_cache.get(file_path) == f_size:
+                            # Already in cache from previous session
+                            return
+                        last_size_cache[file_path] = f_size
+                        save_cache()
+                    except: pass
+                
+                # 2. EXCLUSIVE LOCK CHECK (Windows Render Guard)
                 # If Media Encoder is rendering, it has a write-lock.
                 try:
                     # Attempt to open the file exclusively for appending
@@ -1257,9 +1258,14 @@ class HeartbeatHandler(FileSystemEventHandler):
                 media_type = "Sound" if is_audio else "Visual"
                 msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
                 
-                # GENERATE THUMBNAIL FOR PULSE
-                thumb = generate_and_upload_thumbnail(asset_file) if (is_video or is_audio) else None
-                broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[{"url": asset_url, "thumbnail": thumb}] if thumb else [asset_url], is_video=True, post_type=target_type)
+                # --- BUFFER BROADCAST GUARD ---
+                # Only broadcast to Buffer if it's a social release OR the system is in live monitoring mode
+                if is_social_folder or self.is_primed:
+                    # GENERATE THUMBNAIL FOR PULSE
+                    thumb = generate_and_upload_thumbnail(asset_file) if (is_video or is_audio) else None
+                    broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[{"url": asset_url, "thumbnail": thumb}] if thumb else [asset_url], is_video=True, post_type=target_type)
+                else:
+                    log_msg(f">>> [ROUTING] Startup scan detected {os.path.basename(file_path)}. Skipping social broadcast (History Guard).")
             else:
                 # GRID POST (SQUARE 1:1)
                 log_msg(f">>> [GRID] Generating square crop for {project_name}...")
@@ -1779,6 +1785,15 @@ def check_inventory_levels():
         log_msg(f"[INVENTORY DIAGNOSTIC ERROR] {e}")
 
 if __name__ == "__main__":
+    import msvcrt
+    if not get_lock():
+        print(f"Another instance of heartbeat.py is already running. (Lock: {LOCK_PATH})")
+        exit(0)
+    
+    if not URL or not KEY:
+        print("Error: SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
+        exit(1)
+        
     # Startup Scan: Populate last_size_cache to avoid "Open" pulses on first launch
     log_msg(f"Initializing Studio Pulse Vision Pipeline... (PID: {os.getpid()})")
     log_msg(f"Watch Path: {WATCH_PATH}")
