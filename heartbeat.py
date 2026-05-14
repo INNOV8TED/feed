@@ -486,6 +486,58 @@ def send_email_alert(subject, message):
     except Exception as e:
         log_msg(f"[EMAIL ERROR] {e}")
 
+def generate_visual_caption(image_path):
+    """Uses OpenAI Vision to describe the content of a workflow snapshot."""
+    if not openai_client: return None
+    try:
+        # 1. Prepare Image
+        import base64
+        ext = os.path.splitext(image_path)[1].lower()
+        if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+            # If video, extract middle frame
+            image_path = generate_and_upload_thumbnail(image_path, local_only=True)
+            if not image_path: return None
+            
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        # 2. OpenAI Vision Call
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this image in 3-5 evocative words. No punctuation. Professional studio tone. Focus on mood or subject."},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ],
+                }
+            ],
+            max_tokens=30
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        log_msg(f"[AI VISION ERROR] {e}")
+        return None
+
+def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creative", software="Neural Engine", channel_id="INNOV8", is_social=False):
+    """Inserts a new activity heartbeat into the Supabase 'feed' table."""
+    try:
+        data = {
+            "project_name": project_name,
+            "action_label": action_label,
+            "asset_url": asset_url,
+            "mood": mood,
+            "software": software,
+            "channel_id": channel_id,
+            "is_social": is_social,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        res = supabase.table("feed").insert(data).execute()
+        log_msg(f"◈ [FEED SYNC] Pulse pushed to website: {action_label}")
+    except Exception as e:
+        log_msg(f"!!! [SYNC ERROR] Supabase insert failed: {e}")
+
 def convert_image_to_video(image_path):
     """Converts a static image into a 3-second MP4 video for carousel compatibility."""
     try:
@@ -867,7 +919,17 @@ class HeartbeatHandler(FileSystemEventHandler):
             else:
                 cta = "\n\nExplore our world at in-no-v8.com or in-no-v8.world."
 
-            msg = f"◈ {channel_id} PULSE ◈\n\n{workflow['label']}: {project_name}.{cta} #StudioPulse #Innov8Labs"
+            # Creative Title Generation
+            creative_project = generate_creative_title(project_name)
+            asset_title = generate_creative_title(basename)
+            
+            # For Memories/Archive, use the asset title prominently
+            if "MEMORIES" in path_upper or "ARCHIVE" in path_upper:
+                final_title = asset_title
+            else:
+                final_title = f"{creative_project}: {asset_title}"
+
+            msg = f"◈ {channel_id} PULSE ◈\n\n{workflow['label']}: {final_title}.{cta} #StudioPulse #Innov8Labs"
             success = broadcast_to_buffer(msg, profile_id=profile_id, asset_urls=[{"url": asset_url, "thumbnail": social_thumb}] if social_thumb else [asset_url], is_video=is_vid, post_type=post_type, bypass_quota=True)
             
             if success:
