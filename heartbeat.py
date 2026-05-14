@@ -1261,8 +1261,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                         return
                     
                     # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
-                    log_msg(f">>> [WEBSITE] Dispatching pulse: {action_label}")
-                    insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
+                    if self.is_primed:
+                        log_msg(f">>> [WEBSITE] Dispatching pulse: {action_label}")
+                        insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
+                    else:
+                        log_msg(f">>> [ROUTING] Startup scan detected {os.path.basename(file_path)}. Indexing only (History Guard).")
                     
                     if not can_broadcast_social:
                         # Fingerprint cache still needs updating to prevent re-pulse of this "Website-only" event
@@ -1316,18 +1319,21 @@ class HeartbeatHandler(FileSystemEventHandler):
                 return # CRITICAL: Social ingest ends here.
             
             # --- STANDARD STUDIO PULSE (Non-Social / DFP / Projects) ---
-            log_msg(f">>> [PULSE] Dispatching standard studio event: {project_name}")
-            insert_pulse_to_supabase(
-                project_name=project_name, 
-                action_label=action_label, 
-                asset_url=asset_url, 
-                mood=mood, 
-                software=software, 
-                quote=quote, 
-                channel_id=channel_id, 
-                is_milestone=False, 
-                is_social=False
-            )
+            if self.is_primed:
+                log_msg(f">>> [PULSE] Dispatching standard studio event: {project_name}")
+                insert_pulse_to_supabase(
+                    project_name=project_name, 
+                    action_label=action_label, 
+                    asset_url=asset_url, 
+                    mood=mood, 
+                    software=software, 
+                    quote=quote, 
+                    channel_id=channel_id, 
+                    is_milestone=False, 
+                    is_social=False
+                )
+            else:
+                log_msg(f">>> [ROUTING] Startup scan detected {project_name}. Indexing only.")
             
             if is_video or is_audio:
                 # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
