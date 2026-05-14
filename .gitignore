@@ -26,3 +26,11 @@ square_*.jpg
 story_*.jpg
 vid_*.mp4
 image_pulse_*.jpg
+clip_*.mp4
+last_log.txt
+log_tail_v2.txt
+scratch/
+recover_queues.py
+retroactive_ai.py
+cleanup_heartbeat.py
+check_lanna_dims.py
