@@ -271,6 +271,15 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
             a_url = item["url"] if isinstance(item, dict) else item
             a_thumb = item.get("thumbnail") if isinstance(item, dict) else None
             
+            if not a_url:
+                log_msg("◈ [BUFFER] Asset URL is missing. Skipping this item.")
+                continue
+            
+            # YouTube conversion: If it's an image and platform is youtube, we need to convert it
+            # But wait, this is a URL. We need the local file path to convert.
+            # Actually, it's better to handle this BEFORE calling broadcast_to_buffer if possible.
+            # But for robustness, I'll add a check here.
+            
             is_vid = a_url.lower().endswith(('.mp4', '.mov'))
             if is_vid:
                 videos.append({
@@ -278,14 +287,17 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
                     "thumbnailUrl": a_thumb if a_thumb else f"{a_url}?v=thumb"
                 })
             else:
+                if platform == "youtube":
+                    log_msg("◈ [BUFFER] YouTube does not support images. Skipping this asset.")
+                    continue
                 images.append({"url": a_url})
     
     if images: assets_payload["images"] = images
     if videos: assets_payload["videos"] = videos
     
     if not assets_payload:
-        log_msg("No assets for Buffer. Skipping.")
-        return
+        log_msg("No assets for Buffer (or filtered out). Skipping.")
+        return False
 
     # Select hashtags based on content
     tags = " #StudioPulse #Innov8Labs #CreativeProcess #NeuralLink"
@@ -306,7 +318,8 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
         metadata = {
             "youtube": {
                 "title": text[:100], # Required
-                "categoryId": "24"    # Entertainment - Required by Buffer for YT
+                "categoryId": "24",    # Entertainment - Required by Buffer for YT
+                "privacy": "public"
             }
         }
     else:
@@ -340,16 +353,37 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
         response = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers, timeout=NETWORK_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
+            
+            # Check for root-level GraphQL errors
             if "errors" in data:
+                err_msg = str(data["errors"])
+                if 'match the channel service "youtube"' in err_msg and platform != "youtube":
+                    log_msg("◈ [BUFFER] Platform mismatch detected in root errors. Retrying as YouTube...")
+                    return broadcast_to_buffer(text, profile_id, asset_urls, is_video, post_type, bypass_quota, platform="youtube")
                 log_msg(f"Buffer GraphQL Error: {data['errors']}")
-            else:
-                try:
-                    post_id = data['data']['createPost']['post']['id']
+                return False
+
+            # Check for logical errors in the mutation response
+            create_post_res = data.get('data', {}).get('createPost', {})
+            if "message" in create_post_res:
+                err_msg = create_post_res["message"]
+                if 'match the channel service "youtube"' in err_msg and platform != "youtube":
+                    log_msg("◈ [BUFFER] Platform mismatch detected in mutation response. Retrying as YouTube...")
+                    return broadcast_to_buffer(text, profile_id, asset_urls, is_video, post_type, bypass_quota, platform="youtube")
+                log_msg(f"Buffer Mutation Error: {err_msg}")
+                return False
+            
+            try:
+                post_id = create_post_res.get('post', {}).get('id')
+                if post_id:
                     log_msg(f"🚀 Buffer Success! Post created with ID: {post_id} on channel {profile_id}")
                     return True
-                except:
-                    log_msg(f"Buffer Response Data: {data}")
+                else:
+                    log_msg(f"Buffer Response Data (No ID): {data}")
                     return False
+            except Exception as e:
+                log_msg(f"Error parsing Buffer success response: {e}")
+                return False
         else:
             log_msg(f"Buffer HTTP error: {response.status_code} - {response.text}")
             return False
@@ -761,11 +795,37 @@ class HeartbeatHandler(FileSystemEventHandler):
             err_msg = traceback.format_exc()
             log_msg(f"◈ [CRITICAL PROCESS ERROR] {type(e).__name__}: {e}\n{err_msg}")
 
-    def dispatch_carousel(self, folder_path):
-        """Processes a folder as a single carousel post."""
+    def dispatch_heartbeat(self, project_name, workflow, file_path):
         try:
-            # 1. Check Weekly Quota
-            current_week = datetime.datetime.now().strftime('%Y-%W')
+            basename = os.path.basename(file_path)
+            ext = os.path.splitext(file_path)[1].lower().strip()
+            is_vid = ext in [".mp4", ".mov"]
+            
+            # 1. SMART ROUTING & ORIENTATION CHECK
+            width, height = get_video_dimensions(file_path) if is_vid else (1080, 1920) # Assume vertical for images
+            is_vert = height > width
+            is_strict_vertical_video = is_vid and width == 1080 and height == 1920
+            
+            # Default Profile
+            profile_id = BUFFER_PROFILE_ID_MAIN
+            channel_id = "INNOV8"
+            
+            # Specific folder routing
+            path_upper = file_path.upper()
+            if "LANNA" in path_upper:
+                profile_id = BUFFER_PROFILE_ID_LANNA
+                channel_id = "LANNA"
+            elif "BLUE" in path_upper:
+                if is_strict_vertical_video:
+                    profile_id = BUFFER_PROFILE_ID_BLUE
+                    channel_id = "BLUE"
+                else:
+                    log_msg(f"◈ [ROUTING] Blue asset {basename} is not a 1080x1920 video. Routing to INN.OV8 instead.")
+                    profile_id = BUFFER_PROFILE_ID_MAIN
+                    channel_id = "INNOV8"
+
+            # Quota Check for Daily Broadcasts
+            today = datetime.datetime.now().strftime('%Y-%m-%d')
             quota_data = {}
             if os.path.exists(QUOTA_FILE):
                 try:
@@ -773,14 +833,89 @@ class HeartbeatHandler(FileSystemEventHandler):
                         quota_data = json.load(f)
                 except: pass
             
-            if quota_data.get("weekly_lanna_carousel_sent") == current_week:
-                log_msg(f"◈ [QUOTA] Weekly Lanna Carousel already sent. Moving {os.path.basename(folder_path)} to Pending.")
+            daily_q = quota_data.get(today, {}).get(profile_id, {}).get("total", 0)
+            if daily_q >= DAILY_BUFFER_LIMIT:
+                log_msg(f"◈ [QUOTA] Daily limit reached for {channel_id}. Skipping real-time broadcast.")
+                return
+
+            # Determine Post Type
+            post_type = ("REEL" if is_vid else "STORY") if is_vert else "GRID"
+            
+            # YouTube Final Check
+            if profile_id == BUFFER_PROFILE_ID_BLUE and not is_strict_vertical_video:
+                return # Redundant safety
+
+            log_msg(f"◈ [HEARTBEAT] Dispatching {channel_id} pulse: {project_name} ({post_type})")
+            
+            # Upload and Broadcast
+            asset_url = upload_to_supabase(file_path)
+            social_thumb = None
+            if is_vid:
+                if not is_vert:
+                    formatted = format_video_vertical(file_path)
+                    if formatted != file_path:
+                        asset_url = upload_to_supabase(formatted, "formatted")
+                        os.remove(formatted)
+                social_thumb = generate_and_upload_thumbnail(file_path)
+
+            # Determine CTA based on channel
+            cta = ""
+            if channel_id == "LANNA":
+                cta = "\n\nFollow @lanna.whispers or visit lannawhispers.com for more."
+            elif channel_id == "BLUE":
+                cta = "\n\nExperience the full spectrum at bluechromatictriangle.com."
+            else:
+                cta = "\n\nExplore our world at in-no-v8.com or in-no-v8.world."
+
+            msg = f"◈ {channel_id} PULSE ◈\n\n{workflow['label']}: {project_name}.{cta} #StudioPulse #Innov8Labs"
+            success = broadcast_to_buffer(msg, profile_id=profile_id, asset_urls=[{"url": asset_url, "thumbnail": social_thumb}] if social_thumb else [asset_url], is_video=is_vid, post_type=post_type, bypass_quota=True)
+            
+            if success:
+                # Update Quota
+                if today not in quota_data: quota_data[today] = {}
+                if profile_id not in quota_data[today]: quota_data[today][profile_id] = {}
+                quota_data[today][profile_id]["total"] = daily_q + 1
+                with open(QUOTA_FILE, 'w') as f: json.dump(quota_data, f)
+                
+                # Also insert to Supabase for website feed
+                insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id)
+
+        except BaseException as e:
+            import traceback
+            err_msg = traceback.format_exc()
+            log_msg(f"◈ [CRITICAL PROCESS ERROR] {type(e).__name__}: {e}\n{err_msg}")
+
+    def dispatch_carousel(self, folder_path):
+        """Processes a folder as a single carousel post."""
+        try:
+            # 1. Check Spacing Quota (Every Other Day)
+            quota_data = {}
+            if os.path.exists(QUOTA_FILE):
+                try:
+                    with open(QUOTA_FILE, 'r') as f:
+                        quota_data = json.load(f)
+                except: pass
+
+            last_carousel_date_str = quota_data.get("last_lanna_carousel_date")
+            can_send = True
+            if last_carousel_date_str:
+                last_date = datetime.datetime.strptime(last_carousel_date_str, '%Y-%m-%d')
+                days_since = (datetime.datetime.now() - last_date).days
+                if days_since < 2:
+                    can_send = False
+                    log_msg(f"◈ [QUOTA] Lanna Carousel spacing not met ({days_since} days since last). Moving {os.path.basename(folder_path)} to Pending.")
+            
+            if not can_send:
                 try:
                     target = os.path.join(PENDING_DIR, "CAROUSELS", os.path.basename(folder_path))
                     if os.path.exists(target): shutil.rmtree(target)
                     shutil.move(folder_path, target)
                 except Exception as e: log_msg(f"[QUEUE ERROR] {e}")
                 return
+            
+            # Update last carousel date
+            quota_data["last_lanna_carousel_date"] = datetime.datetime.now().strftime('%Y-%m-%d')
+            with open(QUOTA_FILE, 'w') as f: json.dump(quota_data, f)
             
             # 1. Folder Stability Wait
             # (Using 5s sleep to ensure all files in batch moves are accounted for)
@@ -841,7 +976,8 @@ class HeartbeatHandler(FileSystemEventHandler):
             # 4. Dispatch Unified Carousel
             folder_name = os.path.basename(folder_path)
             creative_title = generate_creative_title(folder_name)
-            msg = f"◈ LANNA WHISPERS: {creative_title} (Collection) ◈"
+            cta = "\n\nFollow @lanna.whispers or visit lannawhispers.com for more mystical updates."
+            msg = f"◈ LANNA WHISPERS: {creative_title} (Collection) ◈{cta}"
             
             carousel_name = os.path.basename(folder_path)
             creative_label = generate_creative_title(carousel_name)
@@ -871,11 +1007,16 @@ class HeartbeatHandler(FileSystemEventHandler):
                 bypass_quota=False # Count toward daily limit
             )
             
-            # 7. Update Weekly Quota
+            # 7. Update Cache & Quota
             try:
-                quota_data["weekly_lanna_carousel_sent"] = current_week
-                with open(QUOTA_FILE, 'w') as f:
-                    json.dump(quota_data, f)
+                # Update last carousel date
+                quota_data["last_lanna_carousel_date"] = datetime.datetime.now().strftime('%Y-%m-%d')
+                # Save fingerprint of folder name to prevent re-processing
+                cache_key = f"CAROUSEL_{folder_name}"
+                last_size_cache[cache_key] = str(time.time())
+                
+                with open(QUOTA_FILE, 'w') as f: json.dump(quota_data, f)
+                save_cache()
             except: pass
             
             # 8. Cleanup Temp Files
@@ -886,519 +1027,8 @@ class HeartbeatHandler(FileSystemEventHandler):
         except Exception as e:
             log_msg(f"[CAROUSEL ERROR] {e}")
 
-    def dispatch_heartbeat(self, project_name, workflow, file_path):
-        """The actual logic that sends data to Supabase, after debounces."""
-        global last_broadcast_time
-        try:
-            current_time = time.time()
             
-            # 1. DUPLICATION GUARD (Session Lock)
-            if file_path in recent_pulse_lock:
-                if current_time - recent_pulse_lock[file_path] < 600: # 10 Minute Lock
-                    return
-            recent_pulse_lock[file_path] = current_time
-            
-            ext = os.path.splitext(file_path)[1].lower().strip()
-            is_video = ext in [".mp4", ".mov"]
-            is_audio = ext in [".mp3", ".wav"]
-            
-            # Identify Quality
-            is_video = (ext == ".mp4" or ext == ".mov")
-            is_audio = (ext in [".wav", ".mp3"])
-            is_image = (ext in [".jpg", ".jpeg", ".png"])
-            is_high_quality = is_video or is_audio or is_image
 
-            # 1. PRODUCTION-ONLY FILTER (Video/Audio)
-            # Only pulse videos/audio if they are in an output-related folder
-            # This prevents stock assets, footage, and source files from triggering pulses.
-            path_upper = file_path.upper()
-            output_keywords = ["EXPORTS", "MASTERS", "FINAL", "SOCIAL", "MEMORIES", "OUTPUT", "RENDER", "DELIVERABLES", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "[PULSE]", "PROCESSED", "RELEASED", "PODCAST", "EPISODES"]
-            asset_keywords = ["ASSETS", "FOOTAGE", "STOCK", "SOURCE", "RAW", "INGEST", "MATERIAL"]
-            
-            if is_video or is_audio:
-                rel_path_upper = os.path.relpath(file_path, WATCH_PATH).upper()
-                log_msg(f"◈ [DEBUG] Checking Pulse: {rel_path_upper}")
-                is_in_output = any(k in rel_path_upper for k in output_keywords)
-                is_in_asset = any(k in rel_path_upper for k in asset_keywords) or any(k in rel_path_upper for k in ["/IMPORT", "/USE", "\\IMPORT", "\\USE"])
-                
-                # STRIKE TEAM: Allow root-level media, or anything in an explicit output folder.
-                # But KILL anything in an asset folder.
-                is_root = os.path.dirname(file_path) == WATCH_PATH
-                if is_in_asset: return
-                if not is_in_output and not is_root:
-                    return
-                
-                # ROOT GUARD: If the file is too shallow in the project (likely an asset drag-and-drop), skip it.
-                rel_path = os.path.relpath(file_path, WATCH_PATH)
-                is_explicit_pulse = "[PULSE]" in path_upper
-                if len(rel_path.split(os.sep)) < 3 and not any(k in path_upper for k in ["SOCIAL", "MEMORIES", "ARCHIVE", "BEST_OF", "HIGHLIGHTS"]) and not is_explicit_pulse:
-                    # Likely root-level asset
-                    return
-
-            # 2. GLOBAL COOLDOWN (Echo-Zero Lock)
-            # BYPASS for specialized social releases
-            is_special_social = any(k in path_upper for k in ["MEMORIES", "BLUE"])
-            if not is_special_social and (current_time - last_broadcast_time < BROADCAST_LOCK_PERIOD):
-                return
-            
-            # 3. DIGITAL FINGERPRINT CHECK (Rename/Move Guard)
-            # Prevent re-pulsing if the file was just renamed or moved
-            try:
-                f_size = os.path.getsize(file_path)
-                f_ctime = os.path.getctime(file_path)
-                fingerprint = f"{f_size}_{f_ctime}"
-                
-                if fingerprint in fingerprint_cache:
-                    # We've seen this exact file content/state before
-                    return
-                
-                # Store fingerprint
-                fingerprint_cache[fingerprint] = current_time
-                
-                # Periodic cleanup of old fingerprints (older than 24h)
-                if len(fingerprint_cache) > 500:
-                    cutoff = current_time - 86400
-                    expired = [k for k, v in fingerprint_cache.items() if v < cutoff]
-                    for k in expired: del fingerprint_cache[k]
-            except: pass
-
-            # 2. FILE-PATH COOLDOWN (Echo-Zero Lock)
-            # Use the absolute path as the key to prevent echos for the same file
-            cooldown_key = file_path
-            
-            if cooldown_key in last_sent_cache:
-                last_pulse = last_sent_cache[cooldown_key]
-                
-                # High-quality pulses (videos) have a much longer cooldown for the same file
-                # Standard render takes time; we only want one pulse per 10 mins for the same file
-                if is_video and current_time - last_pulse["time"] < 600: 
-                    return
-                
-                # Standard burst protection for everything else (15s)
-                if not is_video and current_time - last_pulse["time"] < 15:
-                    return
-            
-            last_sent_cache[cooldown_key] = {"time": current_time, "is_high_quality": is_high_quality}
-            last_broadcast_time = current_time
-            
-            # 1. PREPARE METADATA
-            mood = workflow['mood']
-            quote = get_random_quote()
-            # Identify Action Label
-            filename = os.path.basename(file_path)
-            creative_label = generate_creative_title(filename)
-            action_label = creative_label
-            
-            # AI CAPTION UPGRADE (For Social/Lanna Posts)
-            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
-            if openai_client and is_social_folder and not is_audio:
-                ai_caption = generate_visual_caption(file_path)
-                if ai_caption:
-                    action_label = ai_caption
-
-            # FOLDER-SPECIFIC LOGIC (MEMORIES & SOCIAL)
-            path_upper = file_path.upper()
-            if "MEMORIES" in path_upper or "SOCIAL" in path_upper:
-                # Use filename as label, but clean it up
-                filename_no_ext = os.path.splitext(filename)[0]
-                # Remove numbers and underscores
-                import re
-                clean_name = re.sub(r'[\d_]+', ' ', filename_no_ext).strip()
-                
-                if "MEMORIES" in path_upper:
-                    # EXTRACT NUMERICAL INDEX (e.g. "1 - Title" -> 1)
-                    try:
-                        match = re.search(r'^(\d+)', filename_no_ext)
-                        file_index = int(match.group(1)) if match else None
-                        action_label = f"◈ MEMORIES ◈\n#{file_index or '?'}: {creative_label}"
-                    except: 
-                        action_label = f"◈ MEMORIES: {creative_label} ◈"
-                elif "BLUE" in path_upper:
-                    action_label = f"◈ BLUE: {creative_label} ◈"
-                elif "LABS" in path_upper:
-                    action_label = f"◈ LABS: {creative_label} ◈"
-                elif "LANNA" in path_upper:
-                    action_label = f"◈ LANNA WHISPERS: {creative_label} ◈"
-                else:
-                    action_label = f"◈ STUDIO BROADCAST: {creative_label} ◈"
-
-                    # WEEKLY & SEQUENTIAL QUOTA CHECK
-                    current_week = datetime.datetime.now().strftime('%Y-%W')
-                    quota_data = {}
-                    if os.path.exists(QUOTA_FILE):
-                        try:
-                            with open(QUOTA_FILE, 'r') as f:
-                                quota_data = json.load(f)
-                        except: pass
-                    
-                    last_index = quota_data.get("last_memory_index", 0)
-                    
-                    if quota_data.get("weekly_memory_sent") == current_week:
-                        log_msg(f"◈ [QUOTA] Weekly Memory already sent for week {current_week}. Skipping {os.path.basename(file_path)}")
-                        return
-
-                    if file_index is not None and file_index != last_index + 1:
-                        log_msg(f"◈ [QUOTA] Memory #{file_index} is out of sequence. Next expected: #{last_index + 1}")
-                        return
-
-            software_map = {
-                ".prproj": "Premiere Pro", ".psd": "Photoshop", ".aep": "After Effects",
-                ".wav": "Studio Engine", ".mp3": "Studio Engine", ".mp4": "Media Encoder", 
-                ".mov": "DaVinci Resolve",
-                ".png": "Graphic Engine", ".jpg": "Graphic Engine"
-            }
-            
-            # Smart Software detection for temp files
-            software = software_map.get(ext, "Creative Engine")
-            if software == "Creative Engine" and workflow['label'] == "Deep in the Edit":
-                software = "Premiere Pro"
-            
-            # Photoshop Heuristics
-            if software == "Graphic Engine" or ext in [".jpg", ".png"]:
-                try:
-                    parent_dir = os.path.dirname(file_path)
-                    if any(f.lower().endswith(".psd") for f in os.listdir(parent_dir)):
-                        software = "Photoshop"
-                    elif "DEER" in project_name.upper():
-                        software = "Photoshop"
-                except: pass
-
-            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
-
-            # 2. CAPTURE VISION / VIDEO / AUDIO / IMAGE (Synchronous)
-            asset_url = ""
-            asset_file = None
-            is_video = ext in ['.mp4', '.mov']
-            is_audio = ext in ['.wav', '.mp3']
-            is_image = ext in ['.jpg', '.jpeg', '.png']
-            is_social_folder = any(k in path_upper for k in ["MEMORIES", "SOCIAL", "ARCHIVE", "BEST_OF", "HIGHLIGHTS", "LANNA", "LABS", "[PULSE]"])
-
-            # --- OPTIMIZATION PASS (Social Only) ---
-            active_source = file_path
-            is_temp_optimized = False
-            if is_social_folder:
-                optimized = optimize_media(file_path)
-                if optimized != file_path:
-                    active_source = optimized
-                    is_temp_optimized = True
-
-            if is_video:
-                log_msg(f">>> [VIDEO] Extracting highlight from {os.path.basename(active_source)}...")
-                asset_file = extract_random_clip(active_source)
-            elif is_audio:
-                log_msg(f">>> [AUDIO] Generating visualizer for {os.path.basename(active_source)}...")
-                is_song = "BLUE" in path_upper
-                asset_file = generate_audio_visualizer(active_source, is_song=is_song)
-            elif is_image:
-                log_msg(f">>> [IMAGE] Preparing pulse asset: {os.path.basename(active_source)}")
-                try:
-                    temp_asset = f"image_pulse_{int(time.time())}{os.path.splitext(active_source)[1]}"
-                    import shutil
-                    time.sleep(1)
-                    shutil.copy2(active_source, temp_asset)
-                    asset_file = temp_asset
-                except Exception as e:
-                    log_msg(f"[IMAGE COPY ERROR] {e}")
-            
-            if not asset_file:
-                asset_file = capture_screenshot()
-            
-            if asset_file:
-                try:
-                    with open(asset_file, 'rb') as f:
-                        file_ext = os.path.splitext(asset_file)[1]
-                        storage_path = f"pulses/{int(time.time())}{file_ext}"
-                        content_type = "video/mp4" if asset_file.endswith(".mp4") else "image/jpeg"
-                        if asset_file.endswith(".mov"): content_type = "video/quicktime"
-                        if asset_file.endswith(".png"): content_type = "image/png"
-                        
-                        supabase.storage.from_('studio-assets').upload(
-                            storage_path, f.read(), 
-                            file_options={"content-type": content_type}
-                        )
-                        asset_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-                        
-                        # 2nd Upload for Social (Using optimized version if available)
-                        full_asset_url = asset_url 
-                        if is_social_folder:
-                            try:
-                                log_msg(f">>> [SOCIAL] Uploading optimized source for Buffer...")
-                                # Special Case: For Audio, we need to generate a FULL visualizer for Social
-                                actual_social_source = active_source
-                                is_temp_full_audio = False
-                                if is_audio:
-                                    log_msg(f">>> [SOCIAL] Generating FULL-LENGTH visualizer for Buffer...")
-                                    is_song = "BLUE" in path_upper
-                                    actual_social_source = generate_audio_visualizer(active_source, full_length=True, is_song=is_song)
-                                    is_temp_full_audio = True
-
-                                full_storage_path = f"social/{int(time.time())}_full{os.path.splitext(actual_social_source)[1]}"
-                                
-                                # GENERATE THUMBNAIL FOR SOCIAL (Video & Audio)
-                                social_thumb = None
-                                if is_audio or is_video:
-                                    social_thumb = generate_and_upload_thumbnail(actual_social_source)
-
-                                with open(actual_social_source, 'rb') as f_full:
-                                    supabase.storage.from_('studio-assets').upload(
-                                        full_storage_path, f_full.read(),
-                                        file_options={"content-type": content_type if not is_audio else "video/mp4"}
-                                    )
-                                full_asset_url = supabase.storage.from_('studio-assets').get_public_url(full_storage_path)
-                                
-                                # Wrap in dict for Buffer if we have a thumb
-                                if social_thumb:
-                                    full_asset_data = {"url": full_asset_url, "thumbnail": social_thumb}
-                                else:
-                                    full_asset_data = full_asset_url
-                                
-                                # Cleanup temp full audio visualizer
-                                if is_temp_full_audio and os.path.exists(actual_social_source):
-                                    try: os.remove(actual_social_source)
-                                    except: pass
-                            except Exception as e:
-                                log_msg(f"[SOCIAL UPLOAD ERROR] {e}")
-                    
-                except Exception as e:
-                    log_msg(f"[IMAGING/VIDEO ERROR] {e}")
-
-            # CLEANUP OPTIMIZED TEMP
-            if is_temp_optimized and os.path.exists(active_source):
-                try: os.remove(active_source)
-                except: pass
-
-            # 3. CHANNEL IDENTIFICATION (Social Ingest Guard)
-            channel_id = "INNOV8"
-            buffer_profile = BUFFER_PROFILE_ID_MAIN
-            mood = "creative"
-            software = "Graphic Engine"
-            is_social_folder = any(folder in path_upper for folder in ["SOCIAL", "LANNA", "BLUE", "MEMORIES", "LABS"])
-            
-            if "BLUE" in path_upper:
-                channel_id = "BLUE"
-                buffer_profile = BUFFER_PROFILE_ID_BLUE
-            elif "LANNA" in path_upper:
-                channel_id = "LANNA"
-                buffer_profile = BUFFER_PROFILE_ID_LANNA
-            elif "LABS" in path_upper:
-                channel_id = "LABS"
-            elif "MEMORIES" in path_upper:
-                channel_id = "MEMORIES"
-
-            # 4. PRE-SYNC QUOTA CHECK FOR LANNA (Prevent Website Spam)
-            if channel_id == "LANNA" and is_social_folder:
-                try:
-                    width, height = get_video_dimensions(file_path)
-                    is_vert = height > width
-                    q_type = ("REEL" if is_video else "STORY") if is_vert else "GRID"
-                    
-                    today = datetime.datetime.now().strftime('%Y-%m-%d')
-                    if os.path.exists(QUOTA_FILE):
-                        with open(QUOTA_FILE, 'r') as f:
-                            q_data = json.load(f)
-                        if q_data.get(today, {}).get(buffer_profile, {}).get(q_type, 0) >= 1:
-                            log_msg(f"◈ [QUOTA] Lanna Daily full. Moving {os.path.basename(file_path)} to Pending.")
-                            try:
-                                target = os.path.join(PENDING_DIR, "POSTS", os.path.basename(file_path))
-                                shutil.move(file_path, target)
-                            except Exception as e: log_msg(f"[QUEUE ERROR] {e}")
-                            return
-                except: pass
-            
-            # --- FINGERPRINT LOCK (Prevent Duplicates) ---
-            try:
-                stat = os.stat(file_path)
-                fingerprint = f"{stat.st_size}_{stat.st_mtime}"
-                if fingerprint in fingerprint_cache and is_social_folder:
-                    log_msg(f"◈ [FINGERPRINT] Already pulsed: {os.path.basename(file_path)}. Skipping.")
-                    return
-            except: pass
-
-            # 4. SOCIAL QUOTA & BROADCAST GUARD
-            if is_social_folder or "LANNA" in path_upper or "BLUE" in path_upper or "LABS" in path_upper or "MEMORIES" in path_upper:
-                today = datetime.datetime.now().strftime('%Y-%m-%d')
-                width, height = get_video_dimensions(file_path)
-                # FORCE REEL for all videos, STORY for vertical images, GRID for others
-                if is_video:
-                    q_type = "REEL"
-                else:
-                    is_vertical = height > width
-                    q_type = "STORY" if is_vertical else "GRID"
-                
-                if "MEMORIES" in path_upper: q_type = "GRID"
-                
-                # Global Lock for Quota Sync
-                with threading.Lock():
-                    quota_data = {}
-                    if os.path.exists(QUOTA_FILE):
-                        try:
-                            with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
-                        except: pass
-                    
-                    # Strict 1-per-type AND Total daily lock (Optimized for Buffer Free Account: 2 slots)
-                    channel_daily = quota_data.get(today, {}).get(buffer_profile, {})
-                    total_today = sum(channel_daily.values())
-                    
-                    # Blue is limited to 1 total per day, others 3 (Matching Expanded Buffer Schedule)
-                    max_total = 1 if channel_id == "BLUE" else 3
-                    can_broadcast_social = False
-                    
-                    if total_today >= max_total:
-                        log_msg(f"◈ [QUOTA] {channel_id} total daily limit ({max_total}) reached. Skipping SOCIAL broadcast (Website Feed will still pulse).")
-                        can_broadcast_social = False
-                    elif channel_daily.get(q_type, 0) >= 1:
-                        log_msg(f"◈ [QUOTA] {channel_id} {q_type} for today is full. Skipping SOCIAL broadcast (Website Feed will still pulse).")
-                        can_broadcast_social = False
-                    else:
-                        # ONLY broadcast to social if the system is live (prevent startup spam)
-                        can_broadcast_social = True if self.is_primed else False
-                        if not self.is_primed:
-                            log_msg(f"◈ [ROUTING] Startup discovery: {os.path.basename(file_path)}. Skipping SOCIAL broadcast (Website Feed only).")
-                    
-                    # SPECIAL CASE: YouTube (BLUE) ONLY supports videos
-                    if "BLUE" in path_upper and not is_video:
-                        log_msg(f"◈ [ROUTING] YouTube channel only supports videos. Skipping {os.path.basename(file_path)}")
-                        return
-                    
-                    # 5. DISPATCH PULSE TO SUPABASE (WEBSITE FEED)
-                    if self.is_primed:
-                        log_msg(f">>> [WEBSITE] Dispatching pulse: {action_label}")
-                        insert_pulse_to_supabase(project_name, action_label, full_asset_url, mood=mood, software=software, quote=quote, channel_id=channel_id, is_milestone=True, is_social=True)
-                    else:
-                        log_msg(f">>> [ROUTING] Startup scan detected {os.path.basename(file_path)}. Indexing only (History Guard).")
-                    
-                    if not can_broadcast_social:
-                        # Fingerprint cache still needs updating to prevent re-pulse of this "Website-only" event
-                        fingerprint_cache[fingerprint] = time.time()
-                        save_cache()
-                        return
-
-                    # 6. UPDATE INTERNAL QUOTA & CACHE
-                    try:
-                        if today not in quota_data: quota_data[today] = {}
-                        if buffer_profile not in quota_data[today]: quota_data[today][buffer_profile] = {}
-                        quota_data[today][buffer_profile][q_type] = quota_data[today][buffer_profile].get(q_type, 0) + 1
-                        
-                        # Memories Weekly Sequence
-                        if "MEMORIES" in path_upper:
-                            import re
-                            current_week = datetime.datetime.now().strftime('%Y-%W')
-                            quota_data["weekly_memory_sent"] = current_week
-                            match = re.search(r'^(\d+)', filename)
-                            if match: quota_data["last_memory_index"] = int(match.group(1))
-
-                        with open(QUOTA_FILE, 'w') as f:
-                            json.dump(quota_data, f)
-                        
-                        # Update Fingerprint Cache (Persist)
-                        fingerprint_cache[fingerprint] = time.time()
-                        save_cache()
-                    except: pass
-
-                # 6.5 FORMATTING & THUMBNAILS FOR SOCIAL
-                dispatch_url = full_asset_url
-                social_thumb = None
-                if is_video:
-                    formatted_path = format_video_vertical(file_path)
-                    if formatted_path != file_path:
-                        dispatch_url = upload_to_supabase(formatted_path, "formatted")
-                        try: os.remove(formatted_path)
-                        except: pass
-                    social_thumb = generate_and_upload_thumbnail(file_path)
-
-                # 7. BUFFER DISPATCH
-                if "MEMORIES" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}] if social_thumb else [dispatch_url], is_video=is_video, post_type="GRID", bypass_quota=True)
-                elif "BLUE" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_BLUE, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}], is_video=is_video, post_type="REEL", bypass_quota=True, platform="youtube")
-                elif "LABS" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_MAIN, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}] if social_thumb else [dispatch_url], is_video=is_video, post_type=q_type, bypass_quota=True)
-                elif "LANNA" in path_upper:
-                    broadcast_to_buffer(action_label, profile_id=BUFFER_PROFILE_ID_LANNA, asset_urls=[{"url": dispatch_url, "thumbnail": social_thumb}] if social_thumb else [dispatch_url], is_video=is_video, post_type=q_type, bypass_quota=True)
-                
-                return # CRITICAL: Social ingest ends here.
-            
-            # --- STANDARD STUDIO PULSE (Non-Social / DFP / Projects) ---
-            if self.is_primed:
-                log_msg(f">>> [PULSE] Dispatching standard studio event: {project_name}")
-                insert_pulse_to_supabase(
-                    project_name=project_name, 
-                    action_label=action_label, 
-                    asset_url=asset_url, 
-                    mood=mood, 
-                    software=software, 
-                    quote=quote, 
-                    channel_id=channel_id, 
-                    is_milestone=False, 
-                    is_social=False
-                )
-            else:
-                log_msg(f">>> [ROUTING] Startup scan detected {project_name}. Indexing only.")
-            
-            if is_video or is_audio:
-                # DETECT IF SQUARE OR VERTICAL FOR SMART ROUTING
-                width, height = get_video_dimensions(file_path)
-                is_square = abs(width - height) < (width * 0.1)
-                
-                target_type = "REEL"
-                if is_square: target_type = "GRID"
-                
-                media_type = "Sound" if is_audio else "Visual"
-                msg = f"🔥 New {media_type} Pulse: #{project_name} in progress. #{software} workflow. feed.in-no-v8.com"
-                
-                # --- BUFFER BROADCAST GUARD ---
-                # ONLY broadcast to Buffer if the system is in live monitoring mode (prevent startup spam)
-                if self.is_primed:
-                    # GENERATE THUMBNAIL FOR PULSE
-                    thumb = generate_and_upload_thumbnail(asset_file) if (is_video or is_audio) else None
-                    broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[{"url": asset_url, "thumbnail": thumb}] if thumb else [asset_url], is_video=True, post_type=target_type)
-                else:
-                    log_msg(f">>> [ROUTING] Startup scan detected {os.path.basename(file_path)}. Skipping social broadcast (History Guard).")
-            else:
-                # GRID POST (SQUARE 1:1)
-                log_msg(f">>> [GRID] Generating square crop for {project_name}...")
-                square_file = f"square_{int(time.time())}.jpg"
-                try:
-                    # FFmpeg 1:1 Square Crop
-                    subprocess.run(['ffmpeg', '-y', '-i', asset_file, '-vf', r"crop=min(iw\,ih):min(iw\,ih)", square_file], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    with open(square_file, 'rb') as f:
-                        storage_path = f"pulses/grid_{int(time.time())}.jpg"
-                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
-                        grid_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-                    
-                    msg = f"◈ STUDIO PHASE: #{project_name} R&D active. #{software} development. feed.in-no-v8.com"
-                    broadcast_to_buffer(msg, profile_id=buffer_profile, asset_urls=[grid_url], is_video=False, post_type="GRID")
-                    if os.path.exists(square_file): os.remove(square_file)
-                except Exception as e:
-                    log_msg(f"[GRID SYNC ERROR] {e}")
-                
-                # ALSO POST AS STORY (VERTICAL 9:16 SNAPSHOT)
-                log_msg(f">>> [STORY] Generating vertical crop for {project_name}...")
-                story_file = f"story_{int(time.time())}.jpg"
-                try:
-                    # FFmpeg 9:16 Vertical Crop (Center)
-                    subprocess.run(['ffmpeg', '-y', '-i', asset_file, '-vf', r"scale=w=-1:h=1920,crop=1080:1920", story_file], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    with open(story_file, 'rb') as f:
-                        storage_path = f"pulses/story_{int(time.time())}.jpg"
-                        supabase.storage.from_('studio-assets').upload(storage_path, f.read())
-                        story_url = supabase.storage.from_('studio-assets').get_public_url(storage_path)
-                    
-                    msg_story = f"◈ LIVE STUDIO PULSE: {project_name} ◈"
-                    broadcast_to_buffer(msg_story, profile_id=buffer_profile, asset_urls=[story_url], is_video=False, post_type="STORY")
-                    if os.path.exists(story_file): os.remove(story_file)
-                except Exception as e:
-                    log_msg(f"[STORY SYNC ERROR] {e}")
-                
-            # --- FINAL CLEANUP ---
-            # Don't delete if it's the original file!
-            if asset_file and asset_file != file_path and ("screenshot_" in asset_file or "clip_" in asset_file or "audio_pulse_" in asset_file or "image_pulse_" in asset_file) and os.path.exists(asset_file):
-                try:
-                    os.remove(asset_file)
-                except: pass
-
-        except Exception as e:
-            err_msg = traceback.format_exc()
-            log_msg(f">>> [SYNC ERROR] {e}\n{err_msg}")
 
     def upload_to_supabase_storage(self, file_path):
         """Upload a milestone image to Supabase Storage."""
