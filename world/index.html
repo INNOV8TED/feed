@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Studio Pulse // Split-Flap Display</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --accent-color: #00ffaa;
+            --flap-bg: #1a1a1a;
+            --flap-text: #f0f0f0;
+            --panel-border: 1px solid rgba(0, 255, 170, 0.15);
+            --clack-speed: 0.05s;
+            --hinge-color: #000;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            background: var(--bg-color);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* INDUSTRIAL CONTAINER */
+        .pulse-widget {
+            display: flex;
+            width: 95vw;
+            height: 85vh;
+            background: linear-gradient(145deg, #0a0a0a, #000);
+            border: var(--panel-border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 0 100px rgba(0,255,170,0.02);
+            position: relative;
+        }
+
+        @media (max-width: 900px) {
+            .pulse-widget { flex-direction: column; width: 98vw; height: 95vh; }
+        }
+
+        /* MEDIA WINDOW */
+        .media-window {
+            flex: 1.2;
+            position: relative;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border-right: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .media-window img, .media-window video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: contrast(1.1) brightness(0.9);
+            transition: opacity 0.8s ease-in-out, transform 20s linear;
+        }
+
+        .media-window:hover img { transform: scale(1.1); }
+
+        .media-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,255,170,0.1);
+            backdrop-filter: blur(5px);
+            padding: 6px 15px;
+            font-size: 11px;
+            letter-spacing: 3px;
+            color: var(--accent-color);
+            border: 1px solid var(--accent-color);
+            text-transform: uppercase;
+            font-weight: 800;
+            z-index: 10;
+        }
+
+        /* SOLARI BOARD SECTION */
+        .flap-board {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .board-header {
+            font-size: 12px;
+            letter-spacing: 6px;
+            color: rgba(0, 255, 170, 0.4);
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            font-weight: 900;
+            text-shadow: 0 0 10px rgba(0,255,170,0.2);
+        }
+
+        .flap-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+        }
+
+        /* THE PHYSICAL FLAP */
+        .flap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 0.75;
+            background: var(--flap-bg);
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: clamp(20px, 5vw, 48px);
+            font-weight: 900;
+            text-align: center;
+            perspective: 500px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .flap .top, .flap .bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #222, #111);
+            color: var(--flap-text);
+            backface-visibility: hidden;
+        }
+
+        .flap .top {
+            top: 0;
+            border-radius: 6px 6px 0 0;
+            line-height: 200%; /* Adjust based on height */
+            border-bottom: 2px solid var(--hinge-color);
+        }
+
+        .flap .bottom {
+            bottom: 0;
+            border-radius: 0 0 6px 6px;
+            line-height: 0;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 10%;
+        }
+
+        /* THE HINGE SCREWS */
+        .flap::before, .flap::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 4px;
+            height: 4px;
+            background: #333;
+            border-radius: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+        }
+        .flap::before { left: 4px; }
+        .flap::after { right: 4px; }
+
+        /* FLIP ANIMATION */
+        .flipping .top {
+            animation: flip-down var(--clack-speed) linear forwards;
+            transform-origin: bottom;
+            z-index: 5;
+        }
+
+        @keyframes flip-down {
+            0% { transform: rotateX(0deg); filter: brightness(1); }
+            50% { transform: rotateX(-90deg); filter: brightness(0.5); }
+            100% { transform: rotateX(-180deg); filter: brightness(0.2); }
+        }
+
+        .pulse-glow {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 10px;
+            color: var(--accent-color);
+            letter-spacing: 2px;
+            opacity: 0.7;
+        }
+
+        .dot {
+            width: 6px;
+            height: 100%;
+            background: var(--accent-color);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-color);
+            animation: pulse-dot 1.5s infinite;
+        }
+
+        /* SYNC OVERLAY */
+        #syncOverlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            transition: opacity 0.5s ease;
+        }
+
+        .sync-btn {
+            background: none;
+            border: 2px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 15px 30px;
+            font-size: 14px;
+            letter-spacing: 5px;
+            font-weight: 900;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 0 20px rgba(0,255,170,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .sync-btn:hover {
+            background: var(--accent-color);
+            color: #000;
+            box-shadow: 0 0 40px var(--accent-color);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="syncOverlay">
+        <button class="sync-btn" onclick="startSync()">◈ ACTIVATE NEURAL SYNC ◈</button>
+    </div>
+
+    <div class="pulse-widget">
+        <!-- Media Section -->
+        <div class="media-window" id="mediaContainer">
+            <div class="media-overlay">Neural Ingest // Live</div>
+            <img id="mainMedia" src="" style="opacity: 0;" alt="Studio Media">
+        </div>
+
+        <!-- Solari Board Section -->
+        <div class="flap-board">
+            <div class="board-header">◈ IN-NO-V8 // STUDIO ARRIVALS ◈</div>
+            <div class="flap-grid" id="flapRow">
+                <!-- Flaps generated by JS -->
+            </div>
+            <div class="pulse-glow">
+                <div class="dot"></div>
+                SYSTEM ONLINE
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const SUPABASE_URL = "https://dzgyqrnmsnhqaiqthzok.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6Z3lxcm5tc25ocWFpcXRoem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyOTQwNzYsImV4cCI6MjA5Mzg3MDA3Nn0.sUWGeR3_Vd1Xm40lRoA0q1nXUjaMK_BbXXv3SBkZ6cY";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const flapRow = document.getElementById('flapRow');
+        const mainMedia = document.getElementById('mainMedia');
+        
+        const CHARS = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789◈:#-.".split("");
+        const BOARD_SIZE = 18; // 3x6 grid
+
+        // --- HIGH-PERFORMANCE AUDIO ENGINE (LOCAL-SAFE) ---
+        const flapAudio = new Audio('flap.mp3');
+        flapAudio.preload = 'auto';
+        
+        function playClack() {
+            if (!syncStarted) return;
+            // Native seek + play for lowest latency over file://
+            flapAudio.currentTime = 0;
+            flapAudio.play().catch(e => console.log("◈ [AUDIO] Playback error:", e));
+        }
+
+        let syncStarted = false;
+
+        function startSync() {
+            document.getElementById('syncOverlay').style.opacity = '0';
+            setTimeout(() => document.getElementById('syncOverlay').style.display = 'none', 500);
+            
+            // "Silent Wakeup" - Primes the hardware for zero-lag
+            flapAudio.volume = 0;
+            flapAudio.play().then(() => {
+                flapAudio.pause();
+                flapAudio.currentTime = 0;
+                flapAudio.volume = 1.0;
+                console.log("◈ [AUDIO] Industrial engine primed.");
+            });
+            
+            syncStarted = true;
+            fetchInitial();
+        }
+
+        // Init Board
+        let currentText = "".padEnd(BOARD_SIZE, " ");
+        createFlaps();
+
+        function createFlaps() {
+            flapRow.innerHTML = "";
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                const flap = document.createElement('div');
+                flap.className = 'flap';
+                flap.innerHTML = `
+                    <div class="top"> </div>
+                    <div class="bottom"> </div>
+                `;
+                flapRow.appendChild(flap);
+            }
+        }
+
+        async function updateBoard(newText, mediaUrl) {
+            newText = newText.toUpperCase().padEnd(BOARD_SIZE, " ").substring(0, BOARD_SIZE);
+            const flaps = document.querySelectorAll('.flap');
+
+            // 1. High-RPM Parameters
+            const FLIP_SPEED = 45; // Fixed high-speed (ms)
+            const audioDurationMs = (flapAudio.duration || 1.5) * 1000;
+            const targetEndTime = Date.now() + audioDurationMs;
+
+            // 2. Fire Sound
+            playClack();
+
+            // Update Media
+            if (mediaUrl) {
+                mainMedia.style.opacity = 0;
+                setTimeout(() => {
+                    mainMedia.src = mediaUrl;
+                    mainMedia.onload = () => { mainMedia.style.opacity = 1; };
+                }, 400);
+            }
+
+            // 3. Calculate Cascade Launch for every character
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                if (newText[i] !== currentText[i]) {
+                    const startIdx = CHARS.indexOf(currentText[i]) || 0;
+                    const endIdx = CHARS.indexOf(newText[i]) || 0;
+                    let dist = endIdx - startIdx;
+                    if (dist < 0) dist += CHARS.length;
+
+                    const flipDuration = dist * FLIP_SPEED;
+                    
+                    // SPREAD LOGIC: Launch them sequentially across the audio duration
+                    // We want the last character to finish at targetEndTime, 
+                    // but the first ones to start much earlier.
+                    const maxPossibleDelay = Math.max(0, audioDurationMs - flipDuration);
+                    const launchDelay = (i / BOARD_SIZE) * maxPossibleDelay; 
+
+                    setTimeout(() => {
+                        animateFlap(flaps[i], currentText[i], newText[i], FLIP_SPEED);
+                    }, launchDelay); 
+                }
+            }
+            currentText = newText;
+        }
+
+        function animateFlap(element, startChar, endChar, intervalMs) {
+            let currentIndex = CHARS.indexOf(startChar);
+            if (currentIndex === -1) currentIndex = 0;
+            const targetIndex = CHARS.indexOf(endChar);
+            
+            const interval = setInterval(() => {
+                element.classList.add('flipping');
+                currentIndex = (currentIndex + 1) % CHARS.length;
+                const char = CHARS[currentIndex];
+                
+                element.querySelector('.top').innerText = char;
+                element.querySelector('.bottom').innerText = char;
+
+                if (currentIndex === targetIndex) {
+                    clearInterval(interval);
+                    setTimeout(() => element.classList.remove('flipping'), 100);
+                }
+            }, intervalMs); 
+        }
+
+        // --- REALTIME LISTENER ---
+        supabaseClient
+            .channel('public:feed')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'feed' }, (payload) => {
+                const data = payload.new;
+                updateBoard(data.action_label || "NEW PULSE", data.asset_url);
+            })
+            .subscribe();
+
+        // Initial State
+        async function fetchInitial() {
+            const { data } = await supabaseClient
+                .from('feed')
+                .select('*')
+                .order('timestamp', { ascending: false })
+                .limit(1);
+            
+            if (data && data.length > 0) {
+                setTimeout(() => updateBoard(data[0].action_label, data[0].asset_url), 1000);
+            } else {
+                setTimeout(() => updateBoard("STUDIO ONLINE", ""), 1000);
+            }
+        }
+        
+    </script>
+</body>
+</html>
