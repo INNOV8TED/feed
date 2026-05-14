@@ -159,7 +159,7 @@ def generate_and_upload_thumbnail(video_path):
         temp_thumb = f"thumb_temp_{unique_id}.jpg"
         # Extract thumbnail at 2 seconds
         cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:02', '-vframes', '1', temp_thumb]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         
         if os.path.exists(temp_thumb):
             url = upload_to_supabase(temp_thumb, "thumbnails")
@@ -464,7 +464,7 @@ def convert_image_to_video(image_path):
             '-vf', "scale='if(gt(iw,ih),1080,-2)':'if(gt(iw,ih),-2,1080)',pad=1080:1080:(1080-iw)/2:(1080-ih)/2:black,format=yuv420p",
             output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[IMG->VID ERROR] {e}")
@@ -496,7 +496,7 @@ def format_video_vertical(input_path):
             '-c:a', 'aac', '-b:a', '128k', # Ensure audio is AAC for social
             output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[VERTICAL CONVERSION ERROR] {e}")
@@ -565,10 +565,13 @@ class HeartbeatHandler(FileSystemEventHandler):
             # --- SEQUENCE GUARD: Block individual frames from PNG/JPG sequences (e.g., _0001.png) ---
             if ext in ['.png', '.jpg']:
                 # Refined Regex: Look for trailing frame numbers like _0001 or .0001
-                # Must be at least 3 digits and either prefixed by [._- ] or just digits at the end
-                if re.search(r'[\._- ]\d{3,}\.', basename) or re.search(r'^\d{4,}\.', basename):
-                    log_msg(f"◈ [WATCHER] Sequence detected: {basename}. Skipping individual frame to prevent feed flood.")
-                    return
+                # Must be at least 3 digits but <= 6 digits (to avoid blocking timestamps)
+                match = re.search(r'[\._- ](\d{3,})\.', basename) or re.search(r'^(\d{4,})\.', basename)
+                if match:
+                    digits = match.group(1)
+                    if len(digits) <= 6:
+                        log_msg(f"◈ [WATCHER] Sequence detected: {basename}. Skipping individual frame to prevent feed flood.")
+                        return
                 
             # DEEP DEBUG
             log_msg(f"[DEBUG] Ext Seen: '{ext}' | Map Type: {type(WORKFLOW_MAP)}")
@@ -1454,7 +1457,7 @@ def generate_blueprint(input_image):
             "[bg][fg]overlay=format=auto[out]",
             '-map', '[out]', '-frames:v', '1', output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[BLUEPRINT ERROR] {e}")
@@ -1528,7 +1531,7 @@ def generate_audio_visualizer(audio_path, full_length=False, is_song=True):
         ]
         
         log_msg(f">>> [RENDER] Executing FFmpeg for Music Visualizer (Duration: {t}s)...")
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         
         # Cleanup temp srt
         if os.path.exists(srt_file): 
@@ -1573,7 +1576,7 @@ def extract_random_clip(video_path):
             '-movflags', '+faststart',
             '-c:a', 'aac', '-b:a', '96k', output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[CLIP ERROR] {e}")
@@ -1591,7 +1594,7 @@ def generate_visual_caption(file_path):
         if is_vid:
             temp_img = f"ai_temp_{int(time.time())}.jpg"
             cmd = ['ffmpeg', '-y', '-i', file_path, '-ss', '00:00:01', '-vframes', '1', temp_img]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
             
         # 2. Encode to Base64
         with open(temp_img, "rb") as image_file:
@@ -1650,7 +1653,7 @@ def optimize_media(file_path):
                 '-movflags', '+faststart',
                 output_file
             ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         else:
             log_msg(f">>> [OPTIMIZE] Compressing image: {os.path.basename(file_path)}")
             # Resize to 1920px max, 80% quality
@@ -1660,7 +1663,7 @@ def optimize_media(file_path):
                 '-q:v', '4', # Roughly 80% quality
                 output_file
             ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
             
         if os.path.exists(output_file):
             return output_file
