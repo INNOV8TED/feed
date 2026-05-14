@@ -34,3 +34,13 @@ recover_queues.py
 retroactive_ai.py
 cleanup_heartbeat.py
 check_lanna_dims.py
+audio_pulse_*.mp4
+image_pulse_*.mp4
+pulse_*.mp4
+temp_*.mp4
+*.mp4
+*.jpg
+*.png
+!public/*.jpg
+!public/*.png
+!public/*.svg
