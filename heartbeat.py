@@ -194,22 +194,36 @@ def upload_to_supabase(file_path, folder="pulses"):
         log_msg(f"[SUPABASE UPLOAD ERROR] {e}")
         return None
 
-def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="energetic", software="Studio Engine", quote="", channel_id="INNOV8", is_milestone=True, is_social=False):
-    """Helper to insert a pulse record into the Supabase heartbeat table."""
+def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creative", software="Neural Engine", channel_id="INNOV8", is_social=False, is_milestone=True, quote=""):
+    """Unified helper to push heartbeat pulses to both 'studio_heartbeat' and 'feed' tables."""
     try:
+        # 1. Sync to World Portal (studio_heartbeat)
         status_text = "Social active." if is_social else "Neural link active."
-        data = {
+        heartbeat_data = {
             "project_name": project_name,
             "action_label": action_label,
             "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}|{channel_id}", 
             "source": "Windows-Workstation",
             "is_milestone": is_milestone
         }
-        res = supabase.table("studio_heartbeat").insert(data).execute()
-        return res.data
+        supabase.table("studio_heartbeat").insert(heartbeat_data).execute()
+        
+        # 2. Sync to Web Feed (feed)
+        feed_data = {
+            "project_name": project_name,
+            "action_label": action_label,
+            "asset_url": asset_url,
+            "mood": mood,
+            "software": software,
+            "channel_id": channel_id,
+            "is_social": is_social,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        supabase.table("feed").insert(feed_data).execute()
+        
+        log_msg(f"◈ [DB SYNC] Pulse synchronized: {project_name} -> {action_label}")
     except Exception as e:
-        log_msg(f"[SUPABASE INSERT ERROR] {e}")
-        return None
+        log_msg(f"!!! [DB SYNC ERROR] {e}")
 
 def get_project_name(file_path):
     """Extract project name from path (e.g., .../DFP/Dr Drive Podcast/ -> Dr Drive)."""
@@ -461,8 +475,19 @@ def generate_creative_title(filename):
         )
         title = response.choices[0].message.content.strip().replace('"', '')
         return title
-    except:
-        return filename.replace("_", " ").title()
+    except Exception as e:
+        # Better fallback naming for when AI is unavailable or quota is exceeded
+        prefixes = ["Studio", "Neural", "Digital", "Master", "Creative", "Visual"]
+        suffixes = ["Focus", "Flow", "Pulse", "Synthesis", "Logic", "Session"]
+        
+        # Clean up filename for a semi-decent title
+        base = filename.replace("_", " ").replace("-", " ").title()
+        import random
+        # Only add prefixes if it's a generic looking name
+        if any(x in filename.lower() for x in ["render", "output", "export", "save"]):
+            return f"{random.choice(prefixes)} {random.choice(suffixes)}"
+        
+        return base
 
 def send_email_alert(subject, message):
     """Sends a high-priority email alert via Resend."""
@@ -520,23 +545,6 @@ def generate_visual_caption(image_path):
         log_msg(f"[AI VISION ERROR] {e}")
         return None
 
-def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creative", software="Neural Engine", channel_id="INNOV8", is_social=False):
-    """Inserts a new activity heartbeat into the Supabase 'feed' table."""
-    try:
-        data = {
-            "project_name": project_name,
-            "action_label": action_label,
-            "asset_url": asset_url,
-            "mood": mood,
-            "software": software,
-            "channel_id": channel_id,
-            "is_social": is_social,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
-        res = supabase.table("feed").insert(data).execute()
-        log_msg(f"◈ [FEED SYNC] Pulse pushed to website: {action_label}")
-    except Exception as e:
-        log_msg(f"!!! [SYNC ERROR] Supabase insert failed: {e}")
 
 def convert_image_to_video(image_path):
     """Converts a static image into a 3-second MP4 video for carousel compatibility."""
@@ -1541,8 +1549,9 @@ def check_inventory_levels():
             for q_type in types:
                 queued_today = daily_quota.get(profile_id, {}).get(q_type, 0)
                 
-                # If we don't have at least 2 in the queue (Today + Tomorrow)
-                if queued_today < 2:
+                # REDUCED AGGRESSION: Only alert if ZERO posts have been sent today
+                # This ensures at least one update happens without daily nagging if target is met.
+                if queued_today < 1:
                     # Check if we have anything in PENDING to fill it
                     pending_folder = os.path.join(PENDING_DIR, "POSTS") 
                     pending_count = len([f for f in os.listdir(pending_folder) if not f.startswith('.')])
