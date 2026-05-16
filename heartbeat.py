@@ -494,8 +494,10 @@ def send_email_alert(subject, message):
     if not RESEND_API_KEY: return
     try:
         params = {
-            "from": "Studio Heartbeat <alerts@in-no-v8.com>",
-            "to": ["stephen@in-no-v8.com"],
+            # Note: If in-no-v8.com is not verified in Resend, this will fail.
+            # Fallback to onboarding@resend.dev if needed for initial setup.
+            "from": "Studio Heartbeat <onboarding@resend.dev>", 
+            "to": ["stephen.portman@gmail.com"], # Using the primary email from your previous sessions
             "subject": subject,
             "html": f"""
             <div style="font-family: sans-serif; background: #050505; color: #fff; padding: 40px; border: 1px solid #00ffaa; border-radius: 8px;">
@@ -1563,17 +1565,6 @@ def check_inventory_levels():
             log_msg(f"◈ [INVENTORY] Scheduled 9PM Diagnostic: Missing {', '.join(missing_reports)}")
             advice_msg = f"Diagnostic complete. To maintain a 24h buffer, please resupply: {', '.join(missing_reports)}."
             
-            # Pulse to Website
-            insert_pulse_to_supabase(
-                project_name="[SYSTEM_ADVICE]",
-                action_label="Supply Chain Alert",
-                asset_url="",
-                mood="warning",
-                software="Inventory Diagnostic",
-                quote=f"{advice_msg} Drop new renders into SOCIAL or MEMORIES folders.",
-                channel_id="SYSTEM",
-                is_milestone=False
-            )
             
             # Send Email Alert
             send_email_alert(
