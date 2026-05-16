@@ -494,10 +494,8 @@ def send_email_alert(subject, message):
     if not RESEND_API_KEY: return
     try:
         params = {
-            # Note: If in-no-v8.com is not verified in Resend, this will fail.
-            # Fallback to onboarding@resend.dev if needed for initial setup.
-            "from": "Studio Heartbeat <onboarding@resend.dev>", 
-            "to": ["stephen.portman@gmail.com"], # Using the primary email from your previous sessions
+            "from": "Studio Heartbeat <alerts@in-no-v8.com>", 
+            "to": ["stephen@in-no-v8.com", "stephen.portman@gmail.com"],
             "subject": subject,
             "html": f"""
             <div style="font-family: sans-serif; background: #050505; color: #fff; padding: 40px; border: 1px solid #00ffaa; border-radius: 8px;">
