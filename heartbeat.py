@@ -1,5 +1,13 @@
-import time
 import os
+import sys
+
+# Set working directory to the script's directory to ensure relative paths resolve correctly
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+import time
 import re
 import threading
 import requests
@@ -14,7 +22,6 @@ from supabase import create_client
 import uuid
 import datetime
 from dotenv import load_dotenv
-import sys
 from openai import OpenAI
 import shutil
 import base64
@@ -152,8 +159,8 @@ WORKFLOW_MAP = {
     ".mov":    {"category": "render",  "mood": "accomplished"}
 }
 
-def generate_and_upload_thumbnail(video_path):
-    """Extracts a frame from a video and uploads it as a thumbnail."""
+def generate_and_upload_thumbnail(video_path, local_only=False):
+    """Extracts a frame from a video and uploads it as a thumbnail or returns local path."""
     try:
         unique_id = uuid.uuid4().hex[:8]
         temp_thumb = f"thumb_temp_{unique_id}.jpg"
@@ -162,6 +169,8 @@ def generate_and_upload_thumbnail(video_path):
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         
         if os.path.exists(temp_thumb):
+            if local_only:
+                return temp_thumb
             url = upload_to_supabase(temp_thumb, "thumbnails")
             try: os.remove(temp_thumb)
             except: pass
@@ -172,43 +181,71 @@ def generate_and_upload_thumbnail(video_path):
         return None
 
 def upload_to_supabase(file_path, folder="pulses"):
-    """Helper to upload a file to Supabase and return the public URL."""
+    """Helper to upload a file to Hostgator FTP and return the public HTTP URL."""
     try:
+        import ftplib
+        FTP_HOST = "ftp.in-no-v8.com"
+        FTP_USER = "innov8co"
+        FTP_PASS = "%odn*fr*l4a7$e"
+        
+        file_ext = os.path.splitext(file_path)[1].lower()
+        unique_id = uuid.uuid4().hex[:8]
+        filename = f"{unique_id}_{os.path.basename(file_path)}"
+        
+        # Connect to Hostgator FTP
+        ftp = ftplib.FTP_TLS(FTP_HOST)
+        ftp.login(FTP_USER, FTP_PASS)
+        ftp.prot_p()
+        
+        # Build path: /in-no-v8.world/vault/studio-assets/{folder}
+        remote_dir = f"/in-no-v8.world/vault/studio-assets/{folder}"
+        
+        # Ensure remote directory exists
+        parts = remote_dir.split('/')
+        current = ""
+        for part in parts:
+            if not part:
+                continue
+            current = f"{current}/{part}"
+            try:
+                ftp.mkd(current)
+            except Exception:
+                pass
+                
+        # Upload the file
+        remote_path = f"{remote_dir}/{filename}"
         with open(file_path, 'rb') as f:
-            file_ext = os.path.splitext(file_path)[1].lower()
-            unique_id = uuid.uuid4().hex[:8]
-            storage_path = f"{folder}/{unique_id}_{os.path.basename(file_path)}"
-            content_type = "video/mp4" if file_ext == ".mp4" else "image/jpeg"
-            if file_ext == ".mov": content_type = "video/quicktime"
-            if file_ext == ".png": content_type = "image/png"
+            ftp.storbinary(f'STOR {remote_path}', f)
             
-            supabase.storage.from_('studio-assets').upload(
-                storage_path, f.read(), 
-                file_options={"content-type": content_type}
-            )
-            return supabase.storage.from_('studio-assets').get_public_url(storage_path)
+        ftp.quit()
+        
+        public_url = f"https://in-no-v8.world/vault/studio-assets/{folder}/{filename}"
+        log_msg(f"◈ [FTP UPLOAD SUCCESS] {file_path} -> {public_url}")
+        return public_url
     except Exception as e:
-        if '409' in str(e) or 'Duplicate' in str(e):
-            # Fallback to getting the public URL for the existing resource
-            return supabase.storage.from_('studio-assets').get_public_url(storage_path)
-        log_msg(f"[SUPABASE UPLOAD ERROR] {e}")
+        log_msg(f"[FTP UPLOAD ERROR] {e}")
         return None
 
 def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creative", software="Neural Engine", channel_id="INNOV8", is_social=False, is_milestone=True, quote=""):
     """Unified helper to push heartbeat pulses to both 'studio_heartbeat' and 'feed' tables."""
+    status_text = "Social active." if is_social else "Neural link active."
+    heartbeat_data = {
+        "project_name": project_name,
+        "action_label": action_label,
+        "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}|{channel_id}", 
+        "source": "Windows-Workstation",
+        "is_milestone": is_milestone
+    }
+    
+    # 1. Sync to World Portal (studio_heartbeat)
     try:
-        # 1. Sync to World Portal (studio_heartbeat)
-        status_text = "Social active." if is_social else "Neural link active."
-        heartbeat_data = {
-            "project_name": project_name,
-            "action_label": action_label,
-            "mood_tag": f"{mood}|{status_text}|{asset_url}|{software}|{quote}|{channel_id}", 
-            "source": "Windows-Workstation",
-            "is_milestone": is_milestone
-        }
         supabase.table("studio_heartbeat").insert(heartbeat_data).execute()
+        log_msg(f"◈ [DB SYNC] Pulse synchronized to studio_heartbeat: {project_name} -> {action_label}")
+    except Exception as e:
+        log_msg(f"!!! [DB SYNC ERROR - studio_heartbeat] {e}")
         
-        # 2. Sync to Web Feed (feed)
+    # 2. Sync to Web Feed (feed)
+    try:
         feed_data = {
             "project_name": project_name,
             "action_label": action_label,
@@ -220,10 +257,99 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
             "timestamp": datetime.datetime.now().isoformat()
         }
         supabase.table("feed").insert(feed_data).execute()
-        
-        log_msg(f"◈ [DB SYNC] Pulse synchronized: {project_name} -> {action_label}")
+        log_msg(f"◈ [DB SYNC] Pulse synchronized to feed: {project_name} -> {action_label}")
     except Exception as e:
-        log_msg(f"!!! [DB SYNC ERROR] {e}")
+        log_msg(f"!!! [DB SYNC ERROR - feed] {e}")
+
+    # 3. Push static JSON snapshot to FTP so WORLD portal has zero Supabase egress
+    try:
+        import threading as _th
+        _th.Thread(target=_push_heartbeat_json_to_ftp, args=(heartbeat_data,), daemon=True).start()
+    except Exception as e:
+        log_msg(f"!!! [FTP JSON SYNC ERROR] {e}")
+
+def _push_heartbeat_json_to_ftp(new_pulse=None):
+    """Fetches latest 20 heartbeat pulses and pushes as studio_heartbeat.json to FTP."""
+    try:
+        import ftplib, io, json as _json, time
+        pulses = []
+        
+        # Connect to Hostgator FTP
+        ftp = ftplib.FTP_TLS("ftp.in-no-v8.com")
+        ftp.login("innov8co", "%odn*fr*l4a7$e")
+        ftp.prot_p()
+        
+        # 1. Attempt to download existing studio_heartbeat.json from FTP to maintain history
+        try:
+            r_bio = io.BytesIO()
+            ftp.retrbinary("RETR /in-no-v8.world/vault/studio_heartbeat.json", r_bio.write)
+            r_bio.seek(0)
+            data_str = r_bio.read().decode("utf-8")
+            pulses = _json.loads(data_str)
+            if not isinstance(pulses, list):
+                pulses = []
+        except Exception:
+            # Fallback to querying Supabase if FTP file is missing or invalid
+            try:
+                result = supabase.table("studio_heartbeat") \
+                    .select("*") \
+                    .neq("project_name", "[SYSTEM_STATUS]") \
+                    .order("created_at", desc=True) \
+                    .limit(20) \
+                    .execute()
+                if result.data:
+                    pulses = result.data
+            except Exception:
+                pass
+
+        # 2. If new_pulse is provided, prepend and merge it to the history carefully to preserve telemetry and real pulses
+        if new_pulse:
+            new_pulse_id = int(time.time())
+            new_row = {
+                "id": new_pulse_id,
+                "project_name": new_pulse.get("project_name"),
+                "action_label": new_pulse.get("action_label"),
+                "mood_tag": new_pulse.get("mood_tag"),
+                "source": new_pulse.get("source"),
+                "is_milestone": new_pulse.get("is_milestone"),
+                "created_at": datetime.datetime.now().isoformat()
+            }
+            
+            # Determine if this new pulse is a system status telemetry update
+            is_telemetry = new_pulse.get("project_name") == "[SYSTEM_STATUS]"
+            
+            # Separate existing real pulses and existing telemetry pulses
+            real_pulses = [p for p in pulses if p.get("project_name") != "[SYSTEM_STATUS]"]
+            telemetry_pulses = [p for p in pulses if p.get("project_name") == "[SYSTEM_STATUS]"]
+            
+            if is_telemetry:
+                # Replace with the latest telemetry pulse
+                telemetry_pulses = [new_row]
+            else:
+                # Prepend the new real pulse to the real history
+                real_pulses = [new_row] + [p for p in real_pulses if p.get("id") != new_pulse_id]
+                
+            # Limit the real pulses to the latest 20 items
+            real_pulses = real_pulses[:20]
+            
+            # Combine them: latest telemetry + 20 real pulses
+            pulses = telemetry_pulses + real_pulses
+
+        if not pulses:
+            ftp.quit()
+            return
+            
+        # 3. Write back to FTP
+        json_bytes = _json.dumps(pulses, default=str).encode("utf-8")
+        bio = io.BytesIO(json_bytes)
+        ftp.storbinary("STOR /in-no-v8.world/vault/studio_heartbeat.json", bio)
+        ftp.quit()
+        
+        kb = len(json_bytes) / 1024
+        count = len(pulses)
+        log_msg(f"◈ [FTP] studio_heartbeat.json pushed successfully ({kb:.1f} KB, {count} pulses)")
+    except Exception as e:
+        log_msg(f"[FTP HEARTBEAT JSON ERROR] {e}")
 
 def get_project_name(file_path):
     """Extract project name from path (e.g., .../DFP/Dr Drive Podcast/ -> Dr Drive)."""
@@ -248,7 +374,7 @@ def get_project_name(file_path):
     except:
         return "Studio Project"
 
-def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_type="REEL", bypass_quota=False, platform="instagram"):
+def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_type="REEL", bypass_quota=False, platform="instagram", location_name=None):
     if not profile_id:
         log_msg("Buffer Profile ID missing. Skipping broadcast.")
         return
@@ -324,7 +450,8 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
 
     # Neural Branding Description
     header = "◈ STUDIO MEMORY ◈" if "MEMORY" in text else "◈ STUDIO BROADCAST ◈"
-    description = f"{header}\n\n{text}\n\n📍 INNOV8 Labs (Lanna, TH)\n\n{tags}"
+    loc_text = location_name if location_name else "INNOV8 Labs (Lanna, TH)"
+    description = f"{header}\n\n{text}\n\n📍 {loc_text}\n\n{tags}"
 
     # --- 2. BUILD PAYLOAD ---
     metadata = {}
@@ -518,13 +645,19 @@ def generate_visual_caption(image_path):
         # 1. Prepare Image
         import base64
         ext = os.path.splitext(image_path)[1].lower()
+        is_extracted = False
         if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
             # If video, extract middle frame
             image_path = generate_and_upload_thumbnail(image_path, local_only=True)
             if not image_path: return None
+            is_extracted = True
             
         with open(image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        if is_extracted:
+            try: os.remove(image_path)
+            except: pass
         
         # 2. OpenAI Vision Call
         response = openai_client.chat.completions.create(
@@ -660,7 +793,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             if ext in ['.png', '.jpg']:
                 # Refined Regex: Look for trailing frame numbers like _0001 or .0001
                 # Must be at least 3 digits but <= 6 digits (to avoid blocking timestamps)
-                match = re.search(r'[\._- ](\d{3,})\.', basename) or re.search(r'^(\d{4,})\.', basename)
+                match = re.search(r'[\._ -](\d{3,})\.', basename) or re.search(r'^(\d{4,})\.', basename)
                 if match:
                     digits = match.group(1)
                     if len(digits) <= 6:
@@ -720,49 +853,53 @@ class HeartbeatHandler(FileSystemEventHandler):
                 last_size_cache[file_path] = cache_key
                 save_cache()
 
-                # 2. EXCLUSIVE LOCK CHECK (Windows Render Guard)
-                # If Media Encoder is rendering, it has a write-lock.
-                try:
-                    # Attempt to open the file exclusively for appending
-                    # If this fails, the file is busy (Active Render)
-                    with open(file_path, 'a'):
-                        pass
-                except (IOError, OSError):
-                    # File is locked - skip this event
-                    log_msg(f"◈ [WATCHER] Busy: {os.path.basename(file_path)} (Locked by another process)")
-                    return
-
-                # 2. SIZE STABILITY CHECK
-                # Lanna Carousel Check (Subfolder in LANNA)
-                # Structure: .../LANNA/Subfolder/file.ext
-                path_parts = file_path.replace("\\", "/").split("/")
+                # Determine if file is a media asset that requires lock/render/stability guard
+                is_media = ext in [".mp4", ".mov", ".mp3", ".wav", ".jpg", ".png", ".jpeg"]
                 is_carousel = False
-                if "LANNA" in [p.upper() for p in path_parts]:
-                    # CAROUSEL CHECK: It's a carousel ONLY if it's in a SUBFOLDER of LANNA
-                    parent_dir = os.path.dirname(file_path)
-                    if os.path.basename(parent_dir).upper() != "LANNA":
-                        carousel_folder = parent_dir
-                        is_carousel = True
-                        log_msg(f"◈ [CAROUSEL] Detected potential component: {os.path.basename(file_path)}")
-                
-                # STABILITY CHECK
-                last_size = -1
-                stable_count = 0
-                while True:
-                    time.sleep(2)
+                carousel_folder = None
+
+                if is_media:
+                    # 2. EXCLUSIVE LOCK CHECK (Windows Render Guard)
+                    # If Media Encoder is rendering, it has a write-lock.
                     try:
-                        if not os.path.exists(file_path): return
-                        current_size = os.path.getsize(file_path)
-                        
-                        if current_size == last_size and current_size > 0:
-                            stable_count += 1
-                        else:
-                            stable_count = 0
-                        
-                        if stable_count >= 3: break # 6 seconds stability
-                        last_size = current_size
-                    except: 
+                        # Attempt to open the file exclusively for appending
+                        # If this fails, the file is busy (Active Render)
+                        with open(file_path, 'a'):
+                            pass
+                    except (IOError, OSError):
+                        # File is locked - skip this event
+                        log_msg(f"◈ [WATCHER] Busy: {os.path.basename(file_path)} (Locked by another process)")
                         return
+
+                # 3. SIZE STABILITY CHECK (Only for media assets)
+                if is_media:
+                    path_parts = file_path.replace("\\", "/").split("/")
+                    if "LANNA" in [p.upper() for p in path_parts]:
+                        # CAROUSEL CHECK: It's a carousel ONLY if it's in a SUBFOLDER of LANNA
+                        parent_dir = os.path.dirname(file_path)
+                        if os.path.basename(parent_dir).upper() != "LANNA":
+                            carousel_folder = parent_dir
+                            is_carousel = True
+                            log_msg(f"◈ [CAROUSEL] Detected potential component: {os.path.basename(file_path)}")
+                
+                    # STABILITY CHECK
+                    last_size = -1
+                    stable_count = 0
+                    while True:
+                        time.sleep(2)
+                        try:
+                            if not os.path.exists(file_path): return
+                            current_size = os.path.getsize(file_path)
+                            
+                            if current_size == last_size and current_size > 0:
+                                stable_count += 1
+                            else:
+                                stable_count = 0
+                            
+                            if stable_count >= 3: break # 6 seconds stability
+                            last_size = current_size
+                        except: 
+                            return
                 
                 if is_carousel:
                     # Wait for the WHOLE FOLDER to be stable (no new files or modifications)
@@ -884,71 +1021,88 @@ class HeartbeatHandler(FileSystemEventHandler):
                     profile_id = BUFFER_PROFILE_ID_MAIN
                     channel_id = "INNOV8"
 
-            # Quota Check for Daily Broadcasts
-            today = datetime.datetime.now().strftime('%Y-%m-%d')
-            quota_data = {}
-            if os.path.exists(QUOTA_FILE):
-                try:
-                    with open(QUOTA_FILE, 'r') as f:
-                        quota_data = json.load(f)
-                except: pass
-            
-            daily_q = quota_data.get(today, {}).get(profile_id, {}).get("total", 0)
-            if daily_q >= DAILY_BUFFER_LIMIT:
-                log_msg(f"◈ [QUOTA] Daily limit reached for {channel_id}. Skipping real-time broadcast.")
+            # Upload to Supabase first so both portal and feed have the asset
+            asset_url = upload_to_supabase(file_path)
+            if not asset_url:
+                log_msg(f"◈ [HEARTBEAT] Failed to upload {basename} to Supabase. Skipping further dispatch.")
                 return
 
-            # Determine Post Type
-            post_type = ("REEL" if is_vid else "STORY") if is_vert else "GRID"
-            
-            # YouTube Final Check
-            if profile_id == BUFFER_PROFILE_ID_BLUE and not is_strict_vertical_video:
-                return # Redundant safety
+            # Check if this asset is inside a 'PUBLISH' subfolder to qualify for social media
+            path_parts = file_path.replace("\\", "/").upper().split("/")
+            in_publish_subfolder = any("PUBLISH" in part for part in path_parts[:-1])
 
-            log_msg(f"◈ [HEARTBEAT] Dispatching {channel_id} pulse: {project_name} ({post_type})")
-            
-            # Upload and Broadcast
-            asset_url = upload_to_supabase(file_path)
-            social_thumb = None
-            if is_vid:
-                if not is_vert:
-                    formatted = format_video_vertical(file_path)
-                    if formatted != file_path:
-                        asset_url = upload_to_supabase(formatted, "formatted")
-                        os.remove(formatted)
-                social_thumb = generate_and_upload_thumbnail(file_path)
-
-            # Determine CTA based on channel
-            cta = ""
-            if channel_id == "LANNA":
-                cta = "\n\nFollow @lanna.whispers or visit lannawhispers.com for more."
-            elif channel_id == "BLUE":
-                cta = "\n\nExperience the full spectrum at bluechromatictriangle.com."
-            else:
-                cta = "\n\nExplore our world at in-no-v8.com or in-no-v8.world."
-
-            # Creative Title Generation
-            creative_project = generate_creative_title(project_name)
-            asset_title = generate_creative_title(basename)
-            
-            # For Memories/Archive, use the asset title prominently
-            if "MEMORIES" in path_upper or "ARCHIVE" in path_upper:
-                final_title = asset_title
-            else:
-                final_title = f"{creative_project}: {asset_title}"
-
-            msg = f"◈ {channel_id} PULSE ◈\n\n{workflow['label']}: {final_title}.{cta} #StudioPulse #Innov8Labs"
-            success = broadcast_to_buffer(msg, profile_id=profile_id, asset_urls=[{"url": asset_url, "thumbnail": social_thumb}] if social_thumb else [asset_url], is_video=is_vid, post_type=post_type, bypass_quota=True)
-            
-            if success:
-                # Update Quota
-                if today not in quota_data: quota_data[today] = {}
-                if profile_id not in quota_data[today]: quota_data[today][profile_id] = {}
-                quota_data[today][profile_id]["total"] = daily_q + 1
-                with open(QUOTA_FILE, 'w') as f: json.dump(quota_data, f)
+            if in_publish_subfolder:
+                # Quota Check for Daily Broadcasts
+                today = datetime.datetime.now().strftime('%Y-%m-%d')
+                quota_data = {}
+                if os.path.exists(QUOTA_FILE):
+                    try:
+                        with open(QUOTA_FILE, 'r') as f:
+                            quota_data = json.load(f)
+                    except: pass
                 
-                # Also insert to Supabase for website feed
-                insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id)
+                daily_q = quota_data.get(today, {}).get(profile_id, {}).get("total", 0)
+                if daily_q >= DAILY_BUFFER_LIMIT:
+                    log_msg(f"◈ [QUOTA] Daily limit reached for {channel_id}. Skipping real-time broadcast.")
+                    # Standard database synchronization to live feed (is_social=False)
+                    insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id, is_social=False)
+                    return
+
+                # Determine Post Type
+                post_type = ("REEL" if is_vid else "STORY") if is_vert else "GRID"
+                
+                # YouTube Final Check
+                if profile_id == BUFFER_PROFILE_ID_BLUE and not is_strict_vertical_video:
+                    insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id, is_social=False)
+                    return # Redundant safety
+
+                social_thumb = None
+                if is_vid:
+                    if not is_vert:
+                        formatted = format_video_vertical(file_path)
+                        if formatted != file_path:
+                            asset_url = upload_to_supabase(formatted, "formatted")
+                            os.remove(formatted)
+                    social_thumb = generate_and_upload_thumbnail(file_path)
+
+                # Determine CTA based on channel
+                cta = ""
+                if channel_id == "LANNA":
+                    cta = "\n\nFollow @lanna.whispers or visit lannawhispers.com for more."
+                elif channel_id == "BLUE":
+                    cta = "\n\nExperience the full spectrum at bluechromatictriangle.com."
+                else:
+                    cta = "\n\nExplore our world at in-no-v8.com or in-no-v8.world."
+
+                # Creative Title Generation
+                creative_project = generate_creative_title(project_name)
+                asset_title = generate_creative_title(basename)
+                
+                # For Memories/Archive, use the asset title prominently
+                if "MEMORIES" in path_upper or "ARCHIVE" in path_upper:
+                    final_title = asset_title
+                else:
+                    final_title = f"{creative_project}: {asset_title}"
+
+                msg = f"◈ {channel_id} PULSE ◈\n\n{workflow['label']}: {final_title}.{cta} #StudioPulse #Innov8Labs"
+                success = broadcast_to_buffer(msg, profile_id=profile_id, asset_urls=[{"url": asset_url, "thumbnail": social_thumb}] if social_thumb else [asset_url], is_video=is_vid, post_type=post_type, bypass_quota=True)
+                
+                if success:
+                    # Update Quota
+                    if today not in quota_data: quota_data[today] = {}
+                    if profile_id not in quota_data[today]: quota_data[today][profile_id] = {}
+                    quota_data[today][profile_id]["total"] = daily_q + 1
+                    with open(QUOTA_FILE, 'w') as f: json.dump(quota_data, f)
+                    
+                    # Also insert to Supabase for website feed (with is_social=True)
+                    insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id, is_social=True)
+                else:
+                    # Sync to DB anyway if broadcast failed
+                    insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id, is_social=False)
+            else:
+                log_msg(f"◈ [HEARTBEAT] Save detected for {basename} ({project_name}) is outside a 'PUBLISH' directory. Bypassing Buffer. Syncing to live portal.")
+                # Standard database synchronization to live feed (with is_social=False)
+                insert_pulse_to_supabase(project_name, workflow['label'], asset_url, mood=workflow['mood'], software="Neural Engine", channel_id=channel_id, is_social=False)
 
         except BaseException as e:
             import traceback
@@ -958,7 +1112,9 @@ class HeartbeatHandler(FileSystemEventHandler):
     def dispatch_carousel(self, folder_path):
         """Processes a folder as a single carousel post."""
         try:
-            # 1. Check Spacing Quota (Every Other Day)
+            current_week = datetime.datetime.now().strftime('%Y-%U')
+            
+            # 1. Check Spacing Quota (Every Other Day) and Weekly Limit
             quota_data = {}
             if os.path.exists(QUOTA_FILE):
                 try:
@@ -968,7 +1124,10 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             last_carousel_date_str = quota_data.get("last_lanna_carousel_date")
             can_send = True
-            if last_carousel_date_str:
+            if quota_data.get("weekly_lanna_carousel_sent") == current_week:
+                can_send = False
+                log_msg(f"◈ [QUOTA] Weekly Lanna Carousel limit already reached for week {current_week}. Moving {os.path.basename(folder_path)} to Pending.")
+            elif last_carousel_date_str:
                 last_date = datetime.datetime.strptime(last_carousel_date_str, '%Y-%m-%d')
                 days_since = (datetime.datetime.now() - last_date).days
                 if days_since < 2:
@@ -1081,6 +1240,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             try:
                 # Update last carousel date
                 quota_data["last_lanna_carousel_date"] = datetime.datetime.now().strftime('%Y-%m-%d')
+                quota_data["weekly_lanna_carousel_sent"] = current_week
                 # Save fingerprint of folder name to prevent re-processing
                 cache_key = f"CAROUSEL_{folder_name}"
                 last_size_cache[cache_key] = str(time.time())
@@ -1101,20 +1261,46 @@ class HeartbeatHandler(FileSystemEventHandler):
 
 
     def upload_to_supabase_storage(self, file_path):
-        """Upload a milestone image to Supabase Storage."""
-        filename = os.path.basename(file_path)
-        storage_path = f"{int(time.time())}_{filename}"
-        
+        """Upload a milestone image to Knownhost FTP."""
         try:
-            with open(file_path, "rb") as f:
-                supabase.storage.from_("studio-assets").upload(
-                    path=storage_path,
-                    file=f,
-                    file_options={"content-type": f"image/{filename.split('.')[-1]}"}
-                )
-            print(f"Uploaded to Studio Assets: {storage_path}")
+            import ftplib
+            FTP_HOST = "ftp.in-no-v8.com"
+            FTP_USER = "innov8co"
+            FTP_PASS = "%odn*fr*l4a7$e"
+            
+            filename = f"{int(time.time())}_{os.path.basename(file_path)}"
+            
+            # Connect to Knownhost FTP
+            ftp = ftplib.FTP_TLS(FTP_HOST)
+            ftp.login(FTP_USER, FTP_PASS)
+            ftp.prot_p()
+            
+            remote_dir = "/in-no-v8.world/vault/studio-assets"
+            
+            # Ensure remote directory exists
+            parts = remote_dir.split('/')
+            current = ""
+            for part in parts:
+                if not part:
+                    continue
+                current = f"{current}/{part}"
+                try:
+                    ftp.mkd(current)
+                except Exception:
+                    pass
+                    
+            remote_path = f"{remote_dir}/{filename}"
+            with open(file_path, 'rb') as f:
+                ftp.storbinary(f'STOR {remote_path}', f)
+                
+            ftp.quit()
+            
+            public_url = f"https://in-no-v8.world/vault/studio-assets/{filename}"
+            print(f"Uploaded to Studio Assets FTP: {public_url}")
+            return public_url
         except Exception as e:
-            print(f"Storage upload error: {e}")
+            print(f"Storage upload FTP error: {e}")
+            return None
 
 # --- HELPER FUNCTIONS ---
 QUOTES = [

@@ -1199,6 +1199,7 @@
                                onwaiting="document.getElementById('loader-${data.id}').style.display = 'block'"
                                onplaying="document.getElementById('loader-${data.id}').style.display = 'none'"
                                ontimeupdate="updateVideoProgress(this, '${data.id}')"
+                               onerror="this.onerror=null; this.src='https://in-no-v8.world/vault/studio-assets/formatted/bae9886c_vertical_17a3bfbb.mp4'; this.load();"
                                style="width: 100%; height: 100%; object-fit: cover; opacity: 1; background: #000; will-change: transform; transform: translateZ(0);">
                             <source src="${imageUrl}" type="${imageUrl.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'video/quicktime'}">
                         </video>
@@ -1429,38 +1430,82 @@
         }
 
         async function loadInitial() {
-            // LOAD LAST 3 DAYS (MAX 40 POSTS) FOR OPTIMAL PERFORMANCE
-            const sessionStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-            const { data, error } = await supabaseClient
-                .from('studio_heartbeat')
-                .select('*')
-                .gt('created_at', sessionStart)
-                .neq('project_name', '[SYSTEM_STATUS]')
-                .order('created_at', { ascending: false })
-                .limit(40);
-            
-            if (data) {
-                const pulses = data.reverse();
+            let pulses = [];
+
+            // 1. Try to load initial telemetry from FTP static JSON snapshot first (RLS bypass)
+            try {
+                const res = await fetch('https://in-no-v8.world/vault/studio_heartbeat.json?t=' + Date.now());
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    pulses = data;
+                    console.log("◈ [FEED] Loaded initial telemetry from FTP JSON fallback. Total items:", pulses.length);
+                }
+            } catch (e) {
+                console.warn("◈ [FEED] FTP JSON fallback unavailable, querying Supabase directly...", e);
+            }
+
+            // 2. Fall back to Supabase query if FTP JSON was empty or failed
+            if (!pulses || pulses.length === 0) {
+                try {
+                    const sessionStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+                    const { data, error } = await supabaseClient
+                        .from('studio_heartbeat')
+                        .select('*')
+                        .gt('created_at', sessionStart)
+                        .neq('project_name', '[SYSTEM_STATUS]')
+                        .order('created_at', { ascending: false })
+                        .limit(40);
+                    if (data) {
+                        pulses = data;
+                        console.log("◈ [FEED] Loaded initial telemetry from Supabase. Total items:", pulses.length);
+                    }
+                } catch (e) {
+                    console.error("◈ [FEED] Supabase query failed:", e);
+                }
+            }
+
+            if (pulses && pulses.length > 0) {
+                // Ensure proper chronological order (oldest first) so that prepending places the latest at the top
+                pulses.sort((a, b) => new Date(a.created_at || a.timestamp) - new Date(b.created_at || b.timestamp));
+
                 pulses.forEach((p, index) => {
                     // Only preload="auto" for the 5 most recent items
                     const shouldPreload = (index >= pulses.length - 5);
                     updateUI(p, true, shouldPreload);
                 });
-                
+
                 // FORCE START AT LATEST (LEFT EDGE)
                 requestAnimationFrame(() => {
                     mainContainer.scrollLeft = 0;
                 });
             }
-            
+
             // INSTANT STATUS CHECK
             checkStudioSilence();
         }
 
+        // POLLING LOOP FOR OFFLINE / FTP BACKUP SYNC (10-second intervals)
+        async function pollFtpBackup() {
+            try {
+                const res = await fetch('https://in-no-v8.world/vault/studio_heartbeat.json?t=' + Date.now());
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    // Sort oldest to newest, updateUI handles existing card checks
+                    data.sort((a, b) => new Date(a.created_at || a.timestamp) - new Date(b.created_at || b.timestamp));
+                    data.forEach(p => {
+                        updateUI(p, false, false);
+                    });
+                }
+            } catch (e) {
+                console.warn('◈ [FEED] Polling fallback unavailable:', e);
+            }
+        }
+
         loadInitial();
         checkStudioSilence(); // Initial check before data to set baseline
+        setInterval(pollFtpBackup, 10000); // Start 10-second polling fallback
 
-        // LISTEN FOR BOTH INSERT (TEXT) AND UPDATE (IMAGE)
+        // LISTEN FOR BOTH INSERT (TEXT) AND UPDATE (IMAGE) (Supabase Realtime fallback)
         supabaseClient.channel('public:studio_heartbeat')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'studio_heartbeat' }, payload => {
                 if (payload.eventType === 'INSERT') {
