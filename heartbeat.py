@@ -181,50 +181,64 @@ def generate_and_upload_thumbnail(video_path, local_only=False):
         return None
 
 def upload_to_supabase(file_path, folder="pulses"):
-    """Helper to upload a file to Hostgator FTP and return the public HTTP URL."""
-    try:
-        import ftplib
-        FTP_HOST = "ftp.in-no-v8.com"
-        FTP_USER = "innov8co"
-        FTP_PASS = "%odn*fr*l4a7$e"
-        
-        file_ext = os.path.splitext(file_path)[1].lower()
-        unique_id = uuid.uuid4().hex[:8]
-        filename = f"{unique_id}_{os.path.basename(file_path)}"
-        
-        # Connect to Hostgator FTP
-        ftp = ftplib.FTP_TLS(FTP_HOST)
-        ftp.login(FTP_USER, FTP_PASS)
-        ftp.prot_p()
-        
-        # Build path: /in-no-v8.world/vault/studio-assets/{folder}
-        remote_dir = f"/in-no-v8.world/vault/studio-assets/{folder}"
-        
-        # Ensure remote directory exists
-        parts = remote_dir.split('/')
-        current = ""
-        for part in parts:
-            if not part:
-                continue
-            current = f"{current}/{part}"
-            try:
-                ftp.mkd(current)
-            except Exception:
-                pass
-                
-        # Upload the file
-        remote_path = f"{remote_dir}/{filename}"
-        with open(file_path, 'rb') as f:
-            ftp.storbinary(f'STOR {remote_path}', f)
+    """Helper to upload a file to Hostgator FTP and return the public HTTP URL with retry handling."""
+    import ftplib
+    import time
+    
+    FTP_HOST = "ftp.in-no-v8.com"
+    FTP_USER = "innov8co"
+    FTP_PASS = "%odn*fr*l4a7$e"
+    
+    file_ext = os.path.splitext(file_path)[1].lower()
+    unique_id = uuid.uuid4().hex[:8]
+    filename = f"{unique_id}_{os.path.basename(file_path)}"
+    
+    max_retries = 5
+    retry_delay = 2.0
+    
+    for attempt in range(max_retries):
+        try:
+            # Connect to Hostgator FTP
+            ftp = ftplib.FTP_TLS(FTP_HOST)
+            ftp.login(FTP_USER, FTP_PASS)
+            ftp.prot_p()
             
-        ftp.quit()
-        
-        public_url = f"https://in-no-v8.world/vault/studio-assets/{folder}/{filename}"
-        log_msg(f"◈ [FTP UPLOAD SUCCESS] {file_path} -> {public_url}")
-        return public_url
-    except Exception as e:
-        log_msg(f"[FTP UPLOAD ERROR] {e}")
-        return None
+            # Build path: /in-no-v8.world/vault/studio-assets/{folder}
+            remote_dir = f"/in-no-v8.world/vault/studio-assets/{folder}"
+            
+            # Ensure remote directory exists
+            parts = remote_dir.split('/')
+            current = ""
+            for part in parts:
+                if not part:
+                    continue
+                current = f"{current}/{part}"
+                try:
+                    ftp.mkd(current)
+                except Exception:
+                    pass
+                    
+            # Upload the file
+            remote_path = f"{remote_dir}/{filename}"
+            with open(file_path, 'rb') as f:
+                ftp.storbinary(f'STOR {remote_path}', f)
+                
+            ftp.quit()
+            
+            public_url = f"https://in-no-v8.world/vault/studio-assets/{folder}/{filename}"
+            log_msg(f"◈ [FTP UPLOAD SUCCESS] {file_path} -> {public_url}")
+            return public_url
+            
+        except Exception as e:
+            err_str = str(e)
+            log_msg(f"◈ [FTP UPLOAD ATTEMPT {attempt+1}/{max_retries} FAILED] {file_path}: {err_str}")
+            if "421" in err_str or "too many connections" in err_str.lower():
+                time.sleep(retry_delay * (attempt + 1))
+            else:
+                time.sleep(retry_delay)
+                
+    log_msg(f"◈ [FTP UPLOAD FATAL ERROR] Failed to upload {file_path} after {max_retries} attempts.")
+    return None
 
 def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creative", software="Neural Engine", channel_id="INNOV8", is_social=False, is_milestone=True, quote=""):
     """Unified helper to push heartbeat pulses to both 'studio_heartbeat' and 'feed' tables."""
@@ -849,10 +863,6 @@ class HeartbeatHandler(FileSystemEventHandler):
                     # In real-time mode, if nothing changed, skip
                     return
                 
-                # Update cache with combined key
-                last_size_cache[file_path] = cache_key
-                save_cache()
-
                 # Determine if file is a media asset that requires lock/render/stability guard
                 is_media = ext in [".mp4", ".mov", ".mp3", ".wav", ".jpg", ".png", ".jpeg"]
                 is_carousel = False
@@ -1026,6 +1036,10 @@ class HeartbeatHandler(FileSystemEventHandler):
             if not asset_url:
                 log_msg(f"◈ [HEARTBEAT] Failed to upload {basename} to Supabase. Skipping further dispatch.")
                 return
+
+            # Update cache with combined key only AFTER successful upload!
+            last_size_cache[file_path] = cache_key
+            save_cache()
 
             # Check if this asset is inside a 'PUBLISH' subfolder to qualify for social media
             path_parts = file_path.replace("\\", "/").upper().split("/")
