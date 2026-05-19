@@ -1038,8 +1038,14 @@ class HeartbeatHandler(FileSystemEventHandler):
                 return
 
             # Update cache with combined key only AFTER successful upload!
-            last_size_cache[file_path] = cache_key
-            save_cache()
+            try:
+                f_size = os.path.getsize(file_path)
+                f_mtime = os.path.getmtime(file_path)
+                cache_key = f"{f_size}_{f_mtime}"
+                last_size_cache[file_path] = cache_key
+                save_cache()
+            except Exception as e:
+                log_msg(f"◈ [CACHE ERROR] Failed to save cache: {e}")
 
             # Check if this asset is inside a 'PUBLISH' subfolder to qualify for social media
             path_parts = file_path.replace("\\", "/").upper().split("/")
