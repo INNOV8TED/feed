@@ -948,7 +948,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                     if is_special_folder or self.is_primed:
                         threshold = 315360000.0 # 10 years (effectively unlimited)
                     else:
-                        threshold = 5184000.0 if is_asset else 120.0 # 60 days for assets, 2 mins for projects
+                        threshold = 5184000.0 if is_asset else 86400.0 # 60 days for assets, 24 hours for projects
                     
                     if freshness > threshold:
                         log_msg(f"◈ [WATCHER] Skipping {os.path.basename(file_path)}: File is too old ({int(freshness)}s).")
