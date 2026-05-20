@@ -1,5 +1,24 @@
-import os
 import sys
+import os
+
+# Monkeypatch platform to bypass buggy Windows WMI service hangs in supabase-py / platform.system()
+import platform
+class _MockUname:
+    system = "Windows"
+    node = "localhost"
+    release = "10"
+    version = "10.0.19045"
+    machine = "AMD64"
+    processor = "AMD64"
+    def __iter__(self):
+        return iter((self.system, self.node, self.release, self.version, self.machine, self.processor))
+    def __getitem__(self, idx):
+        return [self.system, self.node, self.release, self.version, self.machine, self.processor][idx]
+
+platform.system = lambda: "Windows"
+platform.uname = lambda: _MockUname()
+platform.release = lambda: "10"
+platform.version = lambda: "10.0.19045"
 
 # Set working directory to the script's directory to ensure relative paths resolve correctly
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,8 +30,8 @@ import time
 import re
 import threading
 import requests
-import pyautogui
 import traceback
+# pyautogui is imported dynamically in capture_screenshot to prevent headless/background hangs
 import json
 import subprocess
 import random
@@ -63,7 +82,7 @@ LOCK_PATH = os.path.join(BASE_DIR, "heartbeat.lock")
 
 # DYNAMIC WATCH PATH: Monitor the parent of the current script location
 WATCH_PATH = os.path.dirname(BASE_DIR)
-IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN"]
+IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN", "DEER", "DFP", "FRANK", "INNOV8", "LANNA", "SCARLETT", "SMART AGENCY", "CaptureOne", "Premiere Pro", "FL Studio", "Dr Drive Podcast", "Lens FX 1 SAMPLE"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg", "last_log.txt", "log_tail_v2.txt",
     ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_", "lyrics_",
@@ -123,6 +142,7 @@ last_inventory_alert_time = 0
 BROADCAST_LOCK_PERIOD = 20
 pending_timers = {}
 recent_pulse_lock = {} # {path: timestamp} to prevent duplicates
+actively_processing_carousels = set()
 
 # Singleton handles
 lock_file_handle = None
@@ -199,6 +219,7 @@ def upload_to_supabase(file_path, folder="pulses"):
     max_retries = 5
     retry_delay = 2.0
     
+    ftp = None
     for attempt in range(max_retries):
         try:
             # Connect to Hostgator FTP
@@ -227,6 +248,7 @@ def upload_to_supabase(file_path, folder="pulses"):
                 ftp.storbinary(f'STOR {remote_path}', f)
                 
             ftp.quit()
+            ftp = None
             
             public_url = f"https://in-no-v8.world/vault/studio-assets/{folder}/{filename}"
             log_msg(f"◈ [FTP UPLOAD SUCCESS] {file_path} -> {public_url}")
@@ -235,6 +257,13 @@ def upload_to_supabase(file_path, folder="pulses"):
         except Exception as e:
             err_str = str(e)
             log_msg(f"◈ [FTP UPLOAD ATTEMPT {attempt+1}/{max_retries} FAILED] {file_path}: {err_str}")
+            if ftp:
+                try:
+                    ftp.close()
+                except Exception:
+                    pass
+                ftp = None
+                
             if "421" in err_str or "too many connections" in err_str.lower():
                 time.sleep(retry_delay * (attempt + 1))
             else:
@@ -287,6 +316,7 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
 
 def _push_heartbeat_json_to_ftp(new_pulse=None):
     """Fetches latest 20 heartbeat pulses and pushes as studio_heartbeat.json to FTP."""
+    ftp = None
     try:
         import ftplib, io, json as _json, time
         pulses = []
@@ -353,20 +383,27 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
             pulses = telemetry_pulses + real_pulses
 
         if not pulses:
-            ftp.quit()
             return
             
         # 3. Write back to FTP
         json_bytes = _json.dumps(pulses, default=str).encode("utf-8")
         bio = io.BytesIO(json_bytes)
         ftp.storbinary("STOR /in-no-v8.world/vault/studio_heartbeat.json", bio)
-        ftp.quit()
         
         kb = len(json_bytes) / 1024
         count = len(pulses)
         log_msg(f"◈ [FTP] studio_heartbeat.json pushed successfully ({kb:.1f} KB, {count} pulses)")
     except Exception as e:
         log_msg(f"[FTP HEARTBEAT JSON ERROR] {e}")
+    finally:
+        if ftp:
+            try:
+                ftp.quit()
+            except Exception:
+                try:
+                    ftp.close()
+                except Exception:
+                    pass
 
 def get_project_name(file_path):
     """Extract project name from path (e.g., .../DFP/Dr Drive Podcast/ -> Dr Drive)."""
@@ -794,7 +831,7 @@ class HeartbeatHandler(FileSystemEventHandler):
     def process_event(self, event):
         try:
             # CORRECT PATH DETECTION (Handle Moves)
-            file_path = event.dest_path if hasattr(event, 'dest_path') else event.src_path
+            file_path = event.dest_path if (hasattr(event, 'dest_path') and event.dest_path) else event.src_path
             ext = os.path.splitext(file_path)[1].lower().strip()
             basename = os.path.basename(file_path)
                 
@@ -1126,8 +1163,13 @@ class HeartbeatHandler(FileSystemEventHandler):
 
     def dispatch_carousel(self, folder_path):
         """Processes a folder as a single carousel post."""
+        folder_name = os.path.basename(folder_path)
+        if folder_name in actively_processing_carousels:
+            log_msg(f"◈ [CAROUSEL] Already processing {folder_name}. Aborting duplicate request.")
+            return
+        actively_processing_carousels.add(folder_name)
         try:
-            current_week = datetime.datetime.now().strftime('%Y-%U')
+            current_week = datetime.datetime.now().strftime('%Y-%W')
             
             # 1. Check Spacing Quota (Every Other Day) and Weekly Limit
             quota_data = {}
@@ -1157,9 +1199,6 @@ class HeartbeatHandler(FileSystemEventHandler):
                 except Exception as e: log_msg(f"[QUEUE ERROR] {e}")
                 return
             
-            # Update last carousel date
-            quota_data["last_lanna_carousel_date"] = datetime.datetime.now().strftime('%Y-%m-%d')
-            with open(QUOTA_FILE, 'w') as f: json.dump(quota_data, f)
             
             # 1. Folder Stability Wait
             # (Using 5s sleep to ensure all files in batch moves are accounted for)
@@ -1218,13 +1257,11 @@ class HeartbeatHandler(FileSystemEventHandler):
             if not asset_data: return
             
             # 4. Dispatch Unified Carousel
-            folder_name = os.path.basename(folder_path)
             creative_title = generate_creative_title(folder_name)
             cta = "\n\nFollow @lanna.whispers or visit lannawhispers.com for more mystical updates."
             msg = f"◈ LANNA WHISPERS: {creative_title} (Collection) ◈{cta}"
             
-            carousel_name = os.path.basename(folder_path)
-            creative_label = generate_creative_title(carousel_name)
+            creative_label = generate_creative_title(folder_name)
             action_label = f"◈ LANNA WHISPERS: {creative_label} ◈"
             
             log_msg(f">>> [CAROUSEL] Verified Quota. Dispatching pulse: {action_label}")
@@ -1271,6 +1308,8 @@ class HeartbeatHandler(FileSystemEventHandler):
             
         except Exception as e:
             log_msg(f"[CAROUSEL ERROR] {e}")
+        finally:
+            actively_processing_carousels.discard(folder_name)
 
             
 
@@ -1635,6 +1674,7 @@ def sync_status_to_supabase():
 def capture_screenshot():
     """Captures the current workstation screen as a 'Live Interface' snapshot."""
     try:
+        import pyautogui
         screenshot = pyautogui.screenshot()
         # Downscale for performance
         screenshot = screenshot.resize((1280, 720))
@@ -1669,7 +1709,19 @@ def process_backlog(handler):
             quota_data = {}
             if os.path.exists(QUOTA_FILE):
                 with open(QUOTA_FILE, 'r') as f: quota_data = json.load(f)
-            if quota_data.get("weekly_lanna_carousel_sent") != current_week:
+                
+            # Check spacing and weekly quota before releasing
+            last_carousel_date_str = quota_data.get("last_lanna_carousel_date")
+            can_release = True
+            if quota_data.get("weekly_lanna_carousel_sent") == current_week:
+                can_release = False
+            elif last_carousel_date_str:
+                last_date = datetime.datetime.strptime(last_carousel_date_str, '%Y-%m-%d')
+                days_since = (datetime.datetime.now() - last_date).days
+                if days_since < 2:
+                    can_release = False
+                    
+            if can_release:
                 folder = carousel_pending[0]
                 log_msg(f"◈ [BACKLOG] Releasing Carousel: {os.path.basename(folder)}")
                 # Move back to LANNA to process naturally
