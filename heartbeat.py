@@ -82,7 +82,7 @@ LOCK_PATH = os.path.join(BASE_DIR, "heartbeat.lock")
 
 # DYNAMIC WATCH PATH: Monitor the parent of the current script location
 WATCH_PATH = os.path.dirname(BASE_DIR)
-IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN", "DEER", "DFP", "FRANK", "INNOV8", "LANNA", "SCARLETT", "SMART AGENCY", "CaptureOne", "Premiere Pro", "FL Studio", "Dr Drive Podcast", "Lens FX 1 SAMPLE"]
+IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN", "CaptureOne", "Premiere Pro", "FL Studio", "Dr Drive Podcast", "Lens FX 1 SAMPLE"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg", "last_log.txt", "log_tail_v2.txt",
     ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_", "lyrics_",
