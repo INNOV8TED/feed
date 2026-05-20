@@ -27,3 +27,8 @@ scratch/
 __pycache__/
 .env
 .vercel
+
+# GCP Batch Processor Output and Venv
+vault_batch_catalog.json
+.venv*/
+
