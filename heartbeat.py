@@ -349,6 +349,49 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
             except Exception:
                 pass
 
+        # Helper functions for deduplication
+        def parse_pulse_time(pulse):
+            ts = pulse.get("created_at") or pulse.get("timestamp")
+            if not ts:
+                try:
+                    val = pulse.get("id")
+                    if val and isinstance(val, (int, float)) and val > 1000000000:
+                        return datetime.datetime.fromtimestamp(val).astimezone()
+                except Exception:
+                    pass
+                return datetime.datetime.now().astimezone()
+            if isinstance(ts, (int, float)):
+                return datetime.datetime.fromtimestamp(ts).astimezone()
+            try:
+                ts_str = str(ts)
+                if ts_str.endswith('Z'):
+                    ts_str = ts_str[:-1] + '+00:00'
+                return datetime.datetime.fromisoformat(ts_str).astimezone()
+            except Exception:
+                try:
+                    return datetime.datetime.strptime(str(ts), "%Y-%m-%dT%H:%M:%S.%f").astimezone()
+                except Exception:
+                    return datetime.datetime.now().astimezone()
+
+        def normalize_media_name(mood_tag):
+            if not mood_tag:
+                return ""
+            parts = str(mood_tag).split('|')
+            if len(parts) <= 2:
+                return ""
+            asset_url = parts[2]
+            if not asset_url:
+                return ""
+            base = os.path.basename(asset_url.split('?')[0])
+            name, _ = os.path.splitext(base)
+            name = name.lower()
+            name = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '', name)
+            name = re.sub(r'_[0-9a-f]{8,}', '', name)
+            name = re.sub(r'[0-9a-f]{8,}_', '', name)
+            name = re.sub(r'_[0-9a-f]{8}$', '', name)
+            name = re.sub(r'^[0-9a-f]{8}_', '', name)
+            return re.sub(r'[^a-z]', '', name)
+
         # 2. If new_pulse is provided, prepend and merge it to the history carefully to preserve telemetry and real pulses
         if new_pulse:
             new_pulse_id = int(time.time())
@@ -373,13 +416,44 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
                 # Replace with the latest telemetry pulse
                 telemetry_pulses = [new_row]
             else:
-                # Prepend the new real pulse to the real history
-                real_pulses = [new_row] + [p for p in real_pulses if p.get("id") != new_pulse_id]
+                # Perform dual-layer deduplication to prevent flooding rapid changes/saves
+                new_time = datetime.datetime.now().astimezone()
+                new_project = new_row.get("project_name")
+                new_mood_tag = new_row.get("mood_tag") or ""
+                new_norm_media = normalize_media_name(new_mood_tag)
+                
+                filtered_real_pulses = []
+                for p in real_pulses:
+                    p_project = p.get("project_name")
+                    if p_project != new_project:
+                        filtered_real_pulses.append(p)
+                        continue
+                        
+                    p_time = parse_pulse_time(p)
+                    time_diff = (new_time - p_time).total_seconds()
+                    
+                    # 1. Project-level check (5-minute window for rapid revisions)
+                    if -30 <= time_diff <= 300:
+                        log_msg(f"◈ [DEDUPLICATION] Removing recent pulse (ID {p.get('id')}) for project '{p_project}' due to 5-min project-level revision rule.")
+                        continue
+                        
+                    # 2. Media-level check (15-minute window for identical files/UUID renders)
+                    if -30 <= time_diff <= 900:
+                        p_mood_tag = p.get("mood_tag") or ""
+                        p_norm_media = normalize_media_name(p_mood_tag)
+                        if new_norm_media and p_norm_media and new_norm_media == p_norm_media:
+                            log_msg(f"◈ [DEDUPLICATION] Removing recent pulse (ID {p.get('id')}) for project '{p_project}' due to 15-min media-level rule (media: '{new_norm_media}').")
+                            continue
+                            
+                    filtered_real_pulses.append(p)
+                
+                # Prepend the new real pulse to the cleaned real history
+                real_pulses = [new_row] + [p for p in filtered_real_pulses if p.get("id") != new_pulse_id]
                 
             # Limit the real pulses to the latest 60 items
             real_pulses = real_pulses[:60]
             
-            # Combine them: latest telemetry + 20 real pulses
+            # Combine them: latest telemetry + 60 real pulses
             pulses = telemetry_pulses + real_pulses
 
         if not pulses:
