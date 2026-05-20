@@ -1057,7 +1057,8 @@
                 const sourceUrl = vid.getAttribute('data-src');
                 
                 if (entry.isIntersecting) {
-                    if (vid.src !== sourceUrl) {
+                    const absoluteSourceUrl = new URL(sourceUrl, window.location.href).href;
+                    if (decodeURIComponent(vid.src) !== decodeURIComponent(absoluteSourceUrl)) {
                         vid.src = sourceUrl;
                         vid.load();
                     }
@@ -1218,8 +1219,9 @@
                                data-src="${imageUrl}"
                                onwaiting="document.getElementById('loader-${data.id}').style.display = 'block'"
                                onplaying="document.getElementById('loader-${data.id}').style.display = 'none'"
+                               onpause="document.getElementById('loader-${data.id}').style.display = 'none'"
                                ontimeupdate="updateVideoProgress(this, '${data.id}')"
-                               onerror="this.onerror=null; this.src='https://in-no-v8.world/vault/studio-assets/formatted/bae9886c_vertical_17a3bfbb.mp4'; this.load();"
+                               onerror="document.getElementById('loader-${data.id}').style.display = 'none'; this.onerror=null; this.src='https://in-no-v8.world/vault/studio-assets/formatted/bae9886c_vertical_17a3bfbb.mp4'; this.load();"
                                style="width: 100%; height: 100%; object-fit: cover; opacity: 1; background: #000; will-change: transform; transform: translateZ(0);">
                         </video>
                         <div class="video-progress-container" style="display: block;">

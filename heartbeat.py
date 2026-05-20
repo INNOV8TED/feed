@@ -300,7 +300,7 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
             "software": software,
             "channel_id": channel_id,
             "is_social": is_social,
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.now().astimezone().isoformat()
         }
         supabase.table("feed").insert(feed_data).execute()
         log_msg(f"◈ [DB SYNC] Pulse synchronized to feed: {project_name} -> {action_label}")
@@ -342,7 +342,7 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
                     .select("*") \
                     .neq("project_name", "[SYSTEM_STATUS]") \
                     .order("created_at", desc=True) \
-                    .limit(20) \
+                    .limit(60) \
                     .execute()
                 if result.data:
                     pulses = result.data
@@ -359,7 +359,7 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
                 "mood_tag": new_pulse.get("mood_tag"),
                 "source": new_pulse.get("source"),
                 "is_milestone": new_pulse.get("is_milestone"),
-                "created_at": datetime.datetime.now().isoformat()
+                "created_at": datetime.datetime.now().astimezone().isoformat()
             }
             
             # Determine if this new pulse is a system status telemetry update
@@ -376,8 +376,8 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
                 # Prepend the new real pulse to the real history
                 real_pulses = [new_row] + [p for p in real_pulses if p.get("id") != new_pulse_id]
                 
-            # Limit the real pulses to the latest 20 items
-            real_pulses = real_pulses[:20]
+            # Limit the real pulses to the latest 60 items
+            real_pulses = real_pulses[:60]
             
             # Combine them: latest telemetry + 20 real pulses
             pulses = telemetry_pulses + real_pulses
@@ -1238,13 +1238,13 @@ class HeartbeatHandler(FileSystemEventHandler):
                 is_vid = f.lower().endswith(('.mp4', '.mov'))
                 
                 active_file = f
-                if is_mixed and not is_vid:
-                    # Convert image to 3s video to allow mixed carousel
-                    optimized_vid = convert_image_to_video(f)
-                    if optimized_vid:
-                        active_file = optimized_vid
-                        temp_files.append(optimized_vid)
-                        is_vid = True
+                # Native Mixed Carousels: Skip image-to-video conversion, use raw static images directly.
+                # if is_mixed and not is_vid:
+                #     optimized_vid = convert_image_to_video(f)
+                #     if optimized_vid:
+                #         active_file = optimized_vid
+                #         temp_files.append(optimized_vid)
+                #         is_vid = True
                 
                 url = upload_to_supabase(active_file, "pulses")
                 if url:
