@@ -97,13 +97,13 @@ class handler(BaseHTTPRequestHandler):
                 hero_images = []
                 regular_images = []
                 try:
-                    files = supabase.storage.from_("studio-assets").list(options={"limit": 50})
-                    for f in files:
-                        name = f['name']
-                        if any(name.lower().endswith(ext) for ext in ['.jpg', '.png', '.jpeg']):
-                            url = supabase.storage.from_("studio-assets").get_public_url(name)
-                            if "HERO" in name.upper(): hero_images.append(url)
-                            else: regular_images.append(url)
+                    for p in pings:
+                        parts = p.get('mood_tag', '').split('|')
+                        if len(parts) > 2 and parts[2]:
+                            url = parts[2]
+                            if any(url.lower().endswith(ext) for ext in ['.jpg', '.png', '.jpeg']):
+                                if "HERO" in url.upper(): hero_images.append(url)
+                                else: regular_images.append(url)
                 except: pass
 
                 all_collage_assets = archive_mags + regular_images + fallback_mags
@@ -178,8 +178,37 @@ class handler(BaseHTTPRequestHandler):
                 output.seek(0)
                 
                 file_name = f"roundup_{int(time.time())}_{run_idx}.png"
-                supabase.storage.from_("studio-assets").upload(path=file_name, file=output.read(), file_options={"content-type": "image/png"})
-                final_url = supabase.storage.from_("studio-assets").get_public_url(file_name)
+                
+                # Upload to Knownhost FTP
+                import ftplib
+                FTP_HOST = "ftp.in-no-v8.com"
+                FTP_USER = "innov8co"
+                FTP_PASS = "%odn*fr*l4a7$e"
+                
+                ftp = ftplib.FTP_TLS(FTP_HOST)
+                ftp.login(FTP_USER, FTP_PASS)
+                ftp.prot_p()
+                
+                remote_dir = "/in-no-v8.world/vault/studio-assets"
+                
+                # Ensure remote directory exists
+                parts = remote_dir.split('/')
+                current = ""
+                for part in parts:
+                    if not part:
+                        continue
+                    current = f"{current}/{part}"
+                    try:
+                        ftp.mkd(current)
+                    except Exception:
+                        pass
+                
+                remote_path = f"{remote_dir}/{file_name}"
+                # output.seek(0) was already run, read is perfect
+                ftp.storbinary(f'STOR {remote_path}', output)
+                ftp.quit()
+                
+                final_url = f"https://in-no-v8.world/vault/studio-assets/{file_name}"
 
                 # 7. Push to Buffer (Automatic scheduling handles the rest)
                 headers = {"Authorization": f"Bearer {BUFFER_TOKEN}"}

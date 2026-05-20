@@ -22,7 +22,7 @@ from supabase import create_client
 import uuid
 import datetime
 from dotenv import load_dotenv
-from openai import OpenAI
+from gcp_gemini_client import call_gemini, get_access_token
 import shutil
 import base64
 
@@ -45,13 +45,16 @@ import resend
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
-# Initialize OpenAI Client
+# Initialize Google Cloud Vertex AI
 openai_client = None
-if OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception as e:
-        print(f"OpenAI Init Error: {e}")
+try:
+    if get_access_token() is not None:
+        openai_client = True
+        print("[AI SYSTEM] Vertex AI Engine Initialized.")
+    else:
+        print("[AI SYSTEM] Warning: Google Cloud Token not found or invalid.")
+except Exception as e:
+    print(f"[AI SYSTEM ERROR] Vertex AI Init Error: {e}")
 
 # --- GLOBAL PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -582,14 +585,11 @@ def log_msg(msg):
     except: pass
 
 # --- AI ENGINE INITIALIZATION ---
-if OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-        log_msg("◈ [AI SYSTEM] OpenAI Engine Initialized.")
-    except Exception as e:
-        log_msg(f"◈ [AI SYSTEM ERROR] Initialization failed: {e}")
+# Google Cloud Vertex AI was initialized at the top of the file.
+if openai_client:
+    log_msg("[AI SYSTEM] Gemini Engine Active & Authorized.")
 else:
-    log_msg("◈ [AI SYSTEM] Warning: OPENAI_API_KEY not found in .env")
+    log_msg("[AI SYSTEM] Warning: Gemini Engine is offline or unauthorized.")
 
 def generate_creative_title(filename):
     """Uses AI to turn generic filenames into evocative studio titles."""
@@ -606,16 +606,16 @@ def generate_creative_title(filename):
              
         log_msg(f"◈ [AI] Requesting title for: {clean_name}")
              
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a creative director. Turn generic video filenames into 2-5 word evocative, professional studio titles. No quotes. No hashtags. Just the title. If it's already a good title, just clean it up."},
-                {"role": "user", "content": f"Filename: {clean_name}"}
-            ],
-            max_tokens=20
+        title = call_gemini(
+            prompt=f"Filename: {clean_name}",
+            system_instruction="You are a creative director. Turn generic video filenames into 2-5 word evocative, professional studio titles. No quotes. No hashtags. Just the title. If it's already a good title, just clean it up.",
+            model="gemini-2.5-flash"
         )
-        title = response.choices[0].message.content.strip().replace('"', '')
-        return title
+        if title:
+            title = title.strip().replace('"', '')
+            return title
+        else:
+            raise Exception("Gemini return was empty")
     except Exception as e:
         # Better fallback naming for when AI is unavailable or quota is exceeded
         prefixes = ["Studio", "Neural", "Digital", "Master", "Creative", "Visual"]
@@ -673,21 +673,16 @@ def generate_visual_caption(image_path):
             try: os.remove(image_path)
             except: pass
         
-        # 2. OpenAI Vision Call
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Describe this image in 3-5 evocative words. No punctuation. Professional studio tone. Focus on mood or subject."},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                    ],
-                }
-            ],
-            max_tokens=30
+        # 2. Gemini Call
+        caption = call_gemini(
+            prompt="Describe this image in 3-5 evocative words. No punctuation. Professional studio tone. Focus on mood or subject.",
+            image_data=base64_image,
+            model="gemini-2.5-flash"
         )
-        return response.choices[0].message.content.strip()
+        if caption:
+            return caption.strip()
+        else:
+            raise Exception("Gemini return was empty")
     except Exception as e:
         log_msg(f"[AI VISION ERROR] {e}")
         return None
@@ -1397,24 +1392,46 @@ def generate_audio_visualizer(audio_path, full_length=False, is_song=True):
         output_file = os.path.join(base_dir, f"audio_pulse_{ts}.mp4")
         srt_file = os.path.join(base_dir, f"lyrics_{ts}.srt")
         
-        # 2. AI TRANSCRIPTION (OpenAI Whisper) - ONLY FOR SONGS
+        # 2. AI TRANSCRIPTION (Google Cloud Vertex AI Gemini) - ONLY FOR SONGS
         has_lyrics = False
         if is_song and openai_client:
             try:
-                log_msg(f">>> [AI] Transcribing song: {os.path.basename(audio_path)} via Whisper...")
+                log_msg(f">>> [AI] Transcribing song: {os.path.basename(audio_path)} via Gemini...")
                 with open(audio_path, "rb") as audio:
-                    transcript = openai_client.audio.transcriptions.create(
-                        model="whisper-1", 
-                        file=audio, 
-                        response_format="srt"
-                    )
-                    if transcript and len(transcript.strip()) > 50: 
+                    audio_bytes = audio.read()
+                
+                ext = os.path.splitext(audio_path)[1].lower()
+                mime_type = "audio/mp3"
+                if ext == ".wav":
+                    mime_type = "audio/wav"
+                elif ext == ".mp4" or ext == ".m4a":
+                    mime_type = "audio/mp4"
+                
+                transcript = call_gemini(
+                    prompt="Transcribe this audio file into valid SubRip (SRT) format. Start timestamps at 00:00:00,000. Do not add any markdown formatting, backticks, or notes. Return ONLY the raw SRT format content.",
+                    audio_data=audio_bytes,
+                    audio_mime=mime_type,
+                    model="gemini-2.5-flash"
+                )
+                if transcript:
+                    transcript = transcript.strip()
+                    if transcript.startswith("```"):
+                        lines = transcript.splitlines()
+                        if lines[0].startswith("```"):
+                            lines = lines[1:]
+                        if lines and lines[-1].startswith("```"):
+                            lines = lines[:-1]
+                        transcript = "\n".join(lines).strip()
+                    
+                    if len(transcript) > 50: 
                         with open(srt_file, "w", encoding="utf-8") as f:
                             f.write(transcript)
                         has_lyrics = True
                         log_msg(f">>> [AI] Transcription Complete.")
                     else:
                         log_msg(">>> [AI] Transcription empty/short.")
+                else:
+                    log_msg(">>> [AI] Gemini audio transcription returned empty.")
             except Exception as ai_err:
                 log_msg(f"[AI ERROR] {ai_err}")
         
@@ -1512,26 +1529,17 @@ def generate_visual_caption(file_path):
         with open(temp_img, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
             
-        # 3. Call GPT-4o
+        # 3. Call Gemini
         log_msg(f">>> [AI] Analyzing visual context for {os.path.basename(file_path)}...")
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Describe this studio work in 5-8 words for a professional social media feed. Focus on the mood and technical aspect. No hashtags. Example: 'Refining atmospheric lighting in the Lanna temple.'"},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-                        },
-                    ],
-                }
-            ],
-            max_tokens=50,
+        caption = call_gemini(
+            prompt="Describe this studio work in 5-8 words for a professional social media feed. Focus on the mood and technical aspect. No hashtags. Example: 'Refining atmospheric lighting in the Lanna temple.'",
+            image_data=base64_image,
+            model="gemini-2.5-flash"
         )
-        
-        caption = response.choices[0].message.content.strip().strip('"')
+        if caption:
+            caption = caption.strip().strip('"')
+        else:
+            raise Exception("Gemini returned an empty caption.")
         
         # Cleanup
         if is_vid and os.path.exists(temp_img): os.remove(temp_img)

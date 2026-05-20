@@ -4,7 +4,7 @@ import requests
 import base64
 import random
 from supabase import create_client
-from openai import OpenAI
+from gcp_gemini_client import call_gemini, get_access_token
 from dotenv import load_dotenv
 import datetime
 
@@ -14,12 +14,9 @@ load_dotenv(os.path.join(base_dir, ".env"))
 
 URL = os.environ.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 supabase = create_client(URL, KEY)
-openai_client = None
-if OPENAI_API_KEY:
-    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+openai_client = get_access_token() is not None
 
 def generate_creative_title(filename):
     """Uses AI to turn generic filenames into evocative studio titles."""
@@ -27,15 +24,15 @@ def generate_creative_title(filename):
         return filename.replace("_", " ").title()
     try:
         clean_name = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ")
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a creative director. Turn generic filenames into 2-5 word evocative, professional studio titles. No quotes. No hashtags. Just the title."},
-                {"role": "user", "content": f"Filename: {clean_name}"}
-            ],
-            max_tokens=20
+        title = call_gemini(
+            prompt=f"Filename: {clean_name}",
+            system_instruction="You are a creative director. Turn generic filenames into 2-5 word evocative, professional studio titles. No quotes. No hashtags. Just the title.",
+            model="gemini-2.5-flash"
         )
-        return response.choices[0].message.content.strip().replace('"', '')
+        if title:
+            return title.strip().replace('"', '')
+        else:
+            raise Exception("Gemini return was empty")
     except:
         return filename.replace("_", " ").title()
 
@@ -47,20 +44,15 @@ def generate_visual_caption(image_url):
         img_data = requests.get(image_url).content
         base64_image = base64.b64encode(img_data).decode('utf-8')
         
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Describe this work in 5-8 words. Professional studio tone. No hashtags."},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
-                    ],
-                }
-            ],
-            max_tokens=50,
+        caption = call_gemini(
+            prompt="Describe this work in 5-8 words. Professional studio tone. No hashtags.",
+            image_data=base64_image,
+            model="gemini-2.5-flash"
         )
-        return response.choices[0].message.content.strip().strip('"')
+        if caption:
+            return caption.strip().strip('"')
+        else:
+            raise Exception("Gemini return was empty")
     except Exception as e:
         print(f"AI Error: {e}")
         return None
