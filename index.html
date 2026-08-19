@@ -597,10 +597,14 @@
         }
 
         /* MEDIA THEMES */
-        .card-video { --media-accent: #FFD700; --media-glow: rgba(255, 215, 0, 0.3); }
-        .card-audio { --media-accent: #00e5ff; --media-glow: rgba(0, 229, 255, 0.3); }
-        .card-image { --media-accent: #ff00ff; --media-glow: rgba(255, 0, 255, 0.3); }
-        .card-dev   { --media-accent: #00ff00; --media-glow: rgba(0, 255, 0, 0.3); }
+        .card-video   { --media-accent: #FFD700; --media-glow: rgba(255, 215, 0, 0.4); } /* GOLD */
+        .card-audio   { --media-accent: #00E5FF; --media-glow: rgba(0, 229, 255, 0.4); } /* ELECTRIC CYAN */
+        .card-motion  { --media-accent: #FF007F; --media-glow: rgba(255, 0, 127, 0.4); } /* HOT PINK */
+        .card-image   { --media-accent: #BF00FF; --media-glow: rgba(191, 0, 255, 0.4); } /* ELECTRIC PURPLE */
+        .card-lanna   { --media-accent: #FFB300; --media-glow: rgba(255, 179, 0, 0.4); } /* WARM AMBER */
+        .card-fitness { --media-accent: #FF3B30; --media-glow: rgba(255, 59, 48, 0.4); } /* NEON RED / CORAL */
+        .card-dev     { --media-accent: #00FF66; --media-glow: rgba(0, 255, 102, 0.4); } /* MATRIX GREEN */
+        .card-innov8  { --media-accent: #00FFAA; --media-glow: rgba(0, 255, 170, 0.4); } /* NEON TEAL */
 
         .pulse-card.media-themed {
             border-color: var(--media-accent) !important;
@@ -608,17 +612,13 @@
         }
 
         /* DYNAMIC HEADER COLORS BY CATEGORY */
-        .pulse-card .pulse-label {
-            color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
-            -webkit-text-fill-color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
-            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9);
+        .pulse-card .pulse-label,
+        .pulse-card.media-themed .pulse-label,
+        .cinematic-mode .pulse-label {
+            color: var(--media-accent, var(--accent-color, #00FFAA)) !important;
+            -webkit-text-fill-color: var(--media-accent, var(--accent-color, #00FFAA)) !important;
+            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9) !important;
             display: inline-block;
-        }
-
-        .pulse-card.media-themed .pulse-label {
-            color: var(--media-accent, #00ffaa) !important;
-            -webkit-text-fill-color: var(--media-accent, #00ffaa) !important;
-            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9);
         }
 
         .pulse-card.media-themed .project-tag,
@@ -1256,13 +1256,27 @@
             const timeContext = getTimeContext(createdAt);
             const isMemory = (Date.now() - createdAt.getTime()) > (24 * 60 * 60 * 1000);
             
-            // Determine Media Theme
+            // Determine Media & Category Theme
+            const combinedCtx = `${data.project_name || ''} ${data.action_label || ''} ${software} ${mood}`.toUpperCase();
             let mediaClass = 'media-themed ';
-            if (software.includes('PREMIERE') || software.includes('MEDIA ENCODER') || isVideo) mediaClass += 'card-video';
-            else if (software.includes('ABLETON') || software.includes('AUDITION') || isAudio) mediaClass += 'card-audio';
-            else if (software.includes('PHOTOSHOP') || software.includes('ILLUSTRATOR')) mediaClass += 'card-image';
-            else if (software.includes('VS CODE') || software.includes('PYTHON')) mediaClass += 'card-dev';
-            else mediaClass = '';
+            
+            if (combinedCtx.includes('ABLETON') || combinedCtx.includes('AUDITION') || combinedCtx.includes('AUDIO') || combinedCtx.includes('SYNTH') || combinedCtx.includes('MELODIC') || combinedCtx.includes('ATMOSPHERIC') || combinedCtx.includes('SONIC') || combinedCtx.includes('MIXING') || combinedCtx.includes('MUSIC') || combinedCtx.includes('BEAT') || isAudio) {
+                mediaClass += 'card-audio';
+            } else if (combinedCtx.includes('PREMIERE') || combinedCtx.includes('MEDIA ENCODER') || combinedCtx.includes('TIMELINE') || combinedCtx.includes('EDIT') || combinedCtx.includes('CUTTING') || combinedCtx.includes('RENDER') || combinedCtx.includes('COLOR') || isVideo) {
+                mediaClass += 'card-video';
+            } else if (combinedCtx.includes('AFTER EFFECTS') || combinedCtx.includes('BAKING PIXELS') || combinedCtx.includes('MOTION') || combinedCtx.includes('ANIMAT') || combinedCtx.includes('KINETIC') || combinedCtx.includes('SIMULATION') || combinedCtx.includes('FX')) {
+                mediaClass += 'card-motion';
+            } else if (combinedCtx.includes('PHOTOSHOP') || combinedCtx.includes('ILLUSTRATOR') || combinedCtx.includes('GRAPHIC') || combinedCtx.includes('ALCHEMY') || combinedCtx.includes('COMPOSITION') || combinedCtx.includes('PIXEL PERFECT') || combinedCtx.includes('TEXTURE') || combinedCtx.includes('ART') || mood === 'artistic') {
+                mediaClass += 'card-image';
+            } else if (combinedCtx.includes('LANNA') || channelId === 'LANNA') {
+                mediaClass += 'card-lanna';
+            } else if (combinedCtx.includes('FIT') || combinedCtx.includes('RUN') || mood === 'fitness') {
+                mediaClass += 'card-fitness';
+            } else if (combinedCtx.includes('VS CODE') || combinedCtx.includes('PYTHON') || combinedCtx.includes('SYSTEM') || combinedCtx.includes('DEVELOP') || combinedCtx.includes('CODE') || combinedCtx.includes('ENGINE')) {
+                mediaClass += 'card-dev';
+            } else {
+                mediaClass += 'card-innov8';
+            }
 
             const isHero = isVideo; 
             const isSocial = (data.project_name || '').toUpperCase().includes('SOCIAL') || 
