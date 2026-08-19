@@ -591,14 +591,14 @@
         }
 
         /* CATEGORY THEMES (Audio, Motion, Video, Image, Lanna, Dev, Fitness, Innov8) */
-        .pulse-card.card-audio   { --cat-color: #00E5FF; --cat-glow: rgba(0, 229, 255, 0.5); }
-        .pulse-card.card-motion  { --cat-color: #FF007F; --cat-glow: rgba(255, 0, 127, 0.5); }
-        .pulse-card.card-video   { --cat-color: #FFD700; --cat-glow: rgba(255, 215, 0, 0.5); }
-        .pulse-card.card-image   { --cat-color: #BF00FF; --cat-glow: rgba(191, 0, 255, 0.5); }
-        .pulse-card.card-lanna   { --cat-color: #FFB300; --cat-glow: rgba(255, 179, 0, 0.5); }
-        .pulse-card.card-fitness { --cat-color: #FF3B30; --cat-glow: rgba(255, 59, 48, 0.5); }
-        .pulse-card.card-dev     { --cat-color: #00FF66; --cat-glow: rgba(0, 255, 102, 0.5); }
-        .pulse-card.card-innov8  { --cat-color: #00FFAA; --cat-glow: rgba(0, 255, 170, 0.5); }
+        .pulse-card.card-audio   { --cat-color: #00E5FF; --cat-glow: rgba(0, 229, 255, 0.6); }
+        .pulse-card.card-motion  { --cat-color: #FF007F; --cat-glow: rgba(255, 0, 127, 0.6); }
+        .pulse-card.card-video   { --cat-color: #FFD700; --cat-glow: rgba(255, 215, 0, 0.6); }
+        .pulse-card.card-image   { --cat-color: #BF00FF; --cat-glow: rgba(191, 0, 255, 0.6); }
+        .pulse-card.card-lanna   { --cat-color: #FFB300; --cat-glow: rgba(255, 179, 0, 0.6); }
+        .pulse-card.card-fitness { --cat-color: #FF3B30; --cat-glow: rgba(255, 59, 48, 0.6); }
+        .pulse-card.card-dev     { --cat-color: #00FF66; --cat-glow: rgba(0, 255, 102, 0.6); }
+        .pulse-card.card-innov8  { --cat-color: #00FFAA; --cat-glow: rgba(0, 255, 170, 0.6); }
 
         .pulse-card.media-themed {
             border-color: var(--cat-color, #00FFAA) !important;
@@ -606,21 +606,37 @@
         }
 
         .pulse-card .pulse-label {
-            color: var(--cat-color, var(--accent-color, #00FFAA)) !important;
-            -webkit-text-fill-color: var(--cat-color, var(--accent-color, #00FFAA)) !important;
+            font-size: 1.8em !important;
+            margin: 20px 0 !important;
+            font-weight: 800 !important;
+            max-width: 85% !important;
+            line-height: 1.1 !important;
+            letter-spacing: -0.5px !important;
+            text-transform: uppercase !important;
+            display: inline-block !important;
+            color: var(--cat-color, #00FFAA) !important;
+            -webkit-text-fill-color: var(--cat-color, #00FFAA) !important;
             text-shadow: 0 0 20px var(--cat-glow, rgba(0, 255, 170, 0.5)), 0 2px 10px rgba(0,0,0,0.9) !important;
-            display: inline-block;
         }
+
+        .pulse-card.card-audio .pulse-label   { color: #00E5FF !important; -webkit-text-fill-color: #00E5FF !important; text-shadow: 0 0 20px rgba(0, 229, 255, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-motion .pulse-label  { color: #FF007F !important; -webkit-text-fill-color: #FF007F !important; text-shadow: 0 0 20px rgba(255, 0, 127, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-video .pulse-label   { color: #FFD700 !important; -webkit-text-fill-color: #FFD700 !important; text-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-image .pulse-label   { color: #BF00FF !important; -webkit-text-fill-color: #BF00FF !important; text-shadow: 0 0 20px rgba(191, 0, 255, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-lanna .pulse-label   { color: #FFB300 !important; -webkit-text-fill-color: #FFB300 !important; text-shadow: 0 0 20px rgba(255, 179, 0, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-fitness .pulse-label { color: #FF3B30 !important; -webkit-text-fill-color: #FF3B30 !important; text-shadow: 0 0 20px rgba(255, 59, 48, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-dev .pulse-label     { color: #00FF66 !important; -webkit-text-fill-color: #00FF66 !important; text-shadow: 0 0 20px rgba(0, 255, 102, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
+        .pulse-card.card-innov8 .pulse-label  { color: #00FFAA !important; -webkit-text-fill-color: #00FFAA !important; text-shadow: 0 0 20px rgba(0, 255, 170, 0.6), 0 2px 10px rgba(0,0,0,0.9) !important; }
 
         .pulse-card .pulse-sub-label,
         .pulse-card .project-tag,
         .pulse-card .daily-spark {
-            color: var(--cat-color, var(--accent-color, #00FFAA)) !important;
+            color: var(--cat-color, #00FFAA) !important;
         }
 
         .pulse-card .render-progress-bar {
-            background: var(--cat-color, var(--accent-color, #00FFAA)) !important;
-            box-shadow: 0 0 10px var(--cat-color, var(--accent-color, #00FFAA)) !important;
+            background: var(--cat-color, #00FFAA) !important;
+            box-shadow: 0 0 10px var(--cat-color, #00FFAA) !important;
         }
 
         .pulse-content { position: relative; z-index: 2; flex-grow: 1; }
@@ -705,10 +721,8 @@
         }
 
         .pulse-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .project-tag { font-family: 'Space Mono', monospace; font-size: 0.7em; color: var(--accent-color); letter-spacing: 2px; text-transform: uppercase; }
+        .project-tag { font-family: 'Space Mono', monospace; font-size: 0.7em; letter-spacing: 2px; text-transform: uppercase; }
         .timestamp { font-family: 'Space Mono', monospace; font-size: 0.7em; opacity: 0.4; }
-        .pulse-label { font-size: 1.4em; font-weight: 600; letter-spacing: -0.5px; }
-        .pulse-sub-label { font-family: 'Space Mono', monospace; font-size: 0.8em; opacity: 0.5; margin-top: 5px; color: var(--accent-color); }
 
         /* SCROLLBAR */
         #main-container::-webkit-scrollbar { height: 10px; }
@@ -758,24 +772,6 @@
             transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1); 
         }
         .hero-card { height: 760px !important; width: 480px !important; } /* ABSOLUTE SAFETY HEIGHT */
-        .pulse-label { 
-            font-size: 1.8em; 
-            margin: 20px 0; 
-            color: var(--media-accent, var(--accent-color, #ffffff)); 
-            font-weight: 800; 
-            max-width: 85%; 
-            line-height: 1.1; 
-            letter-spacing: -0.5px;
-            text-transform: uppercase;
-            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9);
-        }
-        .pulse-sub-label { 
-            font-size: 1.1em; 
-            font-family: 'Space Mono'; 
-            color: var(--accent-color); 
-            animation: breathe 3s infinite ease-in-out;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.9); /* TEXT POP */
-        }
         
         .pulse-bg {
             position: absolute;
