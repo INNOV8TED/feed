@@ -95,14 +95,8 @@
         .logo-bottom-left { bottom: 40px; left: 40px; }
 
         /* DISTINCT SOCIAL THEME */
-        .cinematic-mode .pulse-label {
-            color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
-            -webkit-text-fill-color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
-            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.5)), 0 2px 10px rgba(0,0,0,0.9) !important;
-        }
         .cinematic-mode .pulse-sub-label {
-            color: var(--accent-color);
-            opacity: 0.8;
+            opacity: 0.9;
             font-weight: 700;
         }
 
@@ -596,40 +590,37 @@
             pointer-events: none;
         }
 
-        /* MEDIA THEMES */
-        .card-video   { --media-accent: #FFD700; --media-glow: rgba(255, 215, 0, 0.4); } /* GOLD */
-        .card-audio   { --media-accent: #00E5FF; --media-glow: rgba(0, 229, 255, 0.4); } /* ELECTRIC CYAN */
-        .card-motion  { --media-accent: #FF007F; --media-glow: rgba(255, 0, 127, 0.4); } /* HOT PINK */
-        .card-image   { --media-accent: #BF00FF; --media-glow: rgba(191, 0, 255, 0.4); } /* ELECTRIC PURPLE */
-        .card-lanna   { --media-accent: #FFB300; --media-glow: rgba(255, 179, 0, 0.4); } /* WARM AMBER */
-        .card-fitness { --media-accent: #FF3B30; --media-glow: rgba(255, 59, 48, 0.4); } /* NEON RED / CORAL */
-        .card-dev     { --media-accent: #00FF66; --media-glow: rgba(0, 255, 102, 0.4); } /* MATRIX GREEN */
-        .card-innov8  { --media-accent: #00FFAA; --media-glow: rgba(0, 255, 170, 0.4); } /* NEON TEAL */
+        /* CATEGORY THEMES (Audio, Motion, Video, Image, Lanna, Dev, Fitness, Innov8) */
+        .pulse-card.card-audio   { --cat-color: #00E5FF; --cat-glow: rgba(0, 229, 255, 0.5); }
+        .pulse-card.card-motion  { --cat-color: #FF007F; --cat-glow: rgba(255, 0, 127, 0.5); }
+        .pulse-card.card-video   { --cat-color: #FFD700; --cat-glow: rgba(255, 215, 0, 0.5); }
+        .pulse-card.card-image   { --cat-color: #BF00FF; --cat-glow: rgba(191, 0, 255, 0.5); }
+        .pulse-card.card-lanna   { --cat-color: #FFB300; --cat-glow: rgba(255, 179, 0, 0.5); }
+        .pulse-card.card-fitness { --cat-color: #FF3B30; --cat-glow: rgba(255, 59, 48, 0.5); }
+        .pulse-card.card-dev     { --cat-color: #00FF66; --cat-glow: rgba(0, 255, 102, 0.5); }
+        .pulse-card.card-innov8  { --cat-color: #00FFAA; --cat-glow: rgba(0, 255, 170, 0.5); }
 
         .pulse-card.media-themed {
-            border-color: var(--media-accent) !important;
-            box-shadow: 0 0 30px var(--media-glow) !important;
+            border-color: var(--cat-color, #00FFAA) !important;
+            box-shadow: 0 0 30px var(--cat-glow, rgba(0, 255, 170, 0.3)) !important;
         }
 
-        /* DYNAMIC HEADER COLORS BY CATEGORY */
-        .pulse-card .pulse-label,
-        .pulse-card.media-themed .pulse-label,
-        .cinematic-mode .pulse-label {
-            color: var(--media-accent, var(--accent-color, #00FFAA)) !important;
-            -webkit-text-fill-color: var(--media-accent, var(--accent-color, #00FFAA)) !important;
-            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9) !important;
+        .pulse-card .pulse-label {
+            color: var(--cat-color, var(--accent-color, #00FFAA)) !important;
+            -webkit-text-fill-color: var(--cat-color, var(--accent-color, #00FFAA)) !important;
+            text-shadow: 0 0 20px var(--cat-glow, rgba(0, 255, 170, 0.5)), 0 2px 10px rgba(0,0,0,0.9) !important;
             display: inline-block;
         }
 
-        .pulse-card.media-themed .project-tag,
-        .pulse-card.media-themed .pulse-sub-label,
-        .pulse-card.media-themed .daily-spark {
-            color: var(--media-accent) !important;
+        .pulse-card .pulse-sub-label,
+        .pulse-card .project-tag,
+        .pulse-card .daily-spark {
+            color: var(--cat-color, var(--accent-color, #00FFAA)) !important;
         }
 
-        .pulse-card.media-themed .render-progress-bar {
-            background: var(--media-accent);
-            box-shadow: 0 0 10px var(--media-accent);
+        .pulse-card .render-progress-bar {
+            background: var(--cat-color, var(--accent-color, #00FFAA)) !important;
+            box-shadow: 0 0 10px var(--cat-color, var(--accent-color, #00FFAA)) !important;
         }
 
         .pulse-content { position: relative; z-index: 2; flex-grow: 1; }
@@ -1256,26 +1247,49 @@
             const timeContext = getTimeContext(createdAt);
             const isMemory = (Date.now() - createdAt.getTime()) > (24 * 60 * 60 * 1000);
             
-            // Determine Media & Category Theme
-            const combinedCtx = `${data.project_name || ''} ${data.action_label || ''} ${software} ${mood}`.toUpperCase();
-            let mediaClass = 'media-themed ';
+            // 1. Resolve Display Label & Category Mapping
+            const id = data.id || 0;
+            const pools = {
+                edit:     ["Cutting the Master", "Timeline Sculpting", "Visual Storytelling", "Assembly Phase", "Edit Lock In Progress", "Color Correction", "Master Render Phase", "Sequence Assembly"],
+                motion:   ["Visual Synthesis", "Dynamic Simulation", "After Effects Magic", "Kinetic Design", "FX Pass", "Animating Reality", "Baking Pixels"],
+                graphic:  ["Visual Prototyping", "Digital Alchemy", "Aesthetic Refinement", "Composition Phase", "Pixel Perfecting", "Texture Mapping", "Branding Forge"],
+                audio:    ["Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"]
+            };
+            const mapping = {
+                "Deep in the Edit": "edit",
+                "Exporting Final Render": "edit",
+                "Color Grading HERO shot": "edit",
+                "Motion Graphics & FX": "motion",
+                "Graphic Design": "graphic",
+                "Audio Mastering": "audio"
+            };
             
-            if (combinedCtx.includes('ABLETON') || combinedCtx.includes('AUDITION') || combinedCtx.includes('AUDIO') || combinedCtx.includes('SYNTH') || combinedCtx.includes('MELODIC') || combinedCtx.includes('ATMOSPHERIC') || combinedCtx.includes('SONIC') || combinedCtx.includes('MIXING') || combinedCtx.includes('MUSIC') || combinedCtx.includes('BEAT') || isAudio) {
-                mediaClass += 'card-audio';
-            } else if (combinedCtx.includes('PREMIERE') || combinedCtx.includes('MEDIA ENCODER') || combinedCtx.includes('TIMELINE') || combinedCtx.includes('EDIT') || combinedCtx.includes('CUTTING') || combinedCtx.includes('RENDER') || combinedCtx.includes('COLOR') || isVideo) {
-                mediaClass += 'card-video';
-            } else if (combinedCtx.includes('AFTER EFFECTS') || combinedCtx.includes('BAKING PIXELS') || combinedCtx.includes('MOTION') || combinedCtx.includes('ANIMAT') || combinedCtx.includes('KINETIC') || combinedCtx.includes('SIMULATION') || combinedCtx.includes('FX')) {
-                mediaClass += 'card-motion';
-            } else if (combinedCtx.includes('PHOTOSHOP') || combinedCtx.includes('ILLUSTRATOR') || combinedCtx.includes('GRAPHIC') || combinedCtx.includes('ALCHEMY') || combinedCtx.includes('COMPOSITION') || combinedCtx.includes('PIXEL PERFECT') || combinedCtx.includes('TEXTURE') || combinedCtx.includes('ART') || mood === 'artistic') {
-                mediaClass += 'card-image';
+            let displayLabel = data.action_label || 'Studio Activity';
+            let category = '';
+            if (mapping[displayLabel]) {
+                category = mapping[displayLabel];
+                const pool = pools[category];
+                displayLabel = pool[id % pool.length];
+            }
+
+            // 2. Classify Media & Category Theme
+            const combinedCtx = `${data.project_name || ''} ${data.action_label || ''} ${displayLabel} ${software} ${mood}`.toUpperCase();
+            let cardCategoryClass = 'card-innov8';
+            
+            if (category === 'audio' || combinedCtx.includes('AUDIO') || combinedCtx.includes('SYNTH') || combinedCtx.includes('MELODIC') || combinedCtx.includes('ATMOSPHERIC') || combinedCtx.includes('SONIC') || combinedCtx.includes('ABLETON') || isAudio) {
+                cardCategoryClass = 'card-audio';
+            } else if (category === 'motion' || combinedCtx.includes('MOTION') || combinedCtx.includes('PIXEL') || combinedCtx.includes('AFTER EFFECTS') || combinedCtx.includes('VFX') || combinedCtx.includes('FX')) {
+                cardCategoryClass = 'card-motion';
+            } else if (category === 'edit' || combinedCtx.includes('PREMIERE') || combinedCtx.includes('EDIT') || combinedCtx.includes('TIMELINE') || combinedCtx.includes('CUTTING') || combinedCtx.includes('RENDER') || isVideo) {
+                cardCategoryClass = 'card-video';
+            } else if (category === 'graphic' || combinedCtx.includes('GRAPHIC') || combinedCtx.includes('PHOTOSHOP') || combinedCtx.includes('ART') || mood === 'artistic') {
+                cardCategoryClass = 'card-image';
             } else if (combinedCtx.includes('LANNA') || channelId === 'LANNA') {
-                mediaClass += 'card-lanna';
+                cardCategoryClass = 'card-lanna';
             } else if (combinedCtx.includes('FIT') || combinedCtx.includes('RUN') || mood === 'fitness') {
-                mediaClass += 'card-fitness';
+                cardCategoryClass = 'card-fitness';
             } else if (combinedCtx.includes('VS CODE') || combinedCtx.includes('PYTHON') || combinedCtx.includes('SYSTEM') || combinedCtx.includes('DEVELOP') || combinedCtx.includes('CODE') || combinedCtx.includes('ENGINE')) {
-                mediaClass += 'card-dev';
-            } else {
-                mediaClass += 'card-innov8';
+                cardCategoryClass = 'card-dev';
             }
 
             const isHero = isVideo; 
@@ -1292,7 +1306,7 @@
             else if ((data.action_label || '').includes('Story')) postTypeClass = 'post-story';
 
             const card = document.createElement('div');
-            card.className = `pulse-card ${mediaClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''} channel-${channelId.toLowerCase()} ${postTypeClass}`;
+            card.className = `pulse-card media-themed ${cardCategoryClass} ${timeContext.class} ${isMemory ? 'memory-card' : ''} ${data.is_milestone ? 'render-glow' : ''} ${isHero ? 'hero-card' : ''} ${isSocial ? 'cinematic-mode' : ''} channel-${channelId.toLowerCase()} ${postTypeClass}`;
             
             // Channel Branding Map
             const channelBranding = {
@@ -1360,29 +1374,7 @@
                         <span class="timestamp">${timeStr}</span>
                     </div>
                     <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;">
-                        <div class="pulse-label">${(() => {
-                            let label = data.action_label || 'Studio Activity';
-                            const id = data.id || 0;
-                            const pools = {
-                                edit:     ["Cutting the Master", "Timeline Sculpting", "Visual Storytelling", "Assembly Phase", "Edit Lock In Progress", "Color Correction", "Master Render Phase", "Sequence Assembly"],
-                                motion:   ["Visual Synthesis", "Dynamic Simulation", "After Effects Magic", "Kinetic Design", "FX Pass", "Animating Reality"],
-                                graphic:  ["Visual Prototyping", "Digital Alchemy", "Aesthetic Refinement", "Composition Phase", "Pixel Perfecting", "Texture Mapping", "Branding Forge"],
-                                audio:    ["Sonic Engineering", "Melodic Synthesis", "Frequency Sculpting", "Mixing Session", "Atmospheric Layering", "Rhythm Engine Active"]
-                            };
-                            const mapping = {
-                                "Deep in the Edit": "edit",
-                                "Exporting Final Render": "edit",
-                                "Color Grading HERO shot": "edit",
-                                "Motion Graphics & FX": "motion",
-                                "Graphic Design": "graphic",
-                                "Audio Mastering": "audio"
-                            };
-                            if (mapping[label]) {
-                                const pool = pools[mapping[label]];
-                                return pool[id % pool.length];
-                            }
-                            return label;
-                        })()}</div>
+                        <div class="pulse-label">${displayLabel}</div>
                         ${imageUrl && isVideo ? `
                             <div class="audio-toggle" onclick="toggleAudio('vid-${data.id}', this)" style="cursor: pointer; color: var(--accent-color); display: flex; align-items: center; justify-content: center; transition: all 0.3s; opacity: 0.7; text-shadow: 0 0 10px var(--accent-color); margin-top: 25px; flex-shrink: 0;">
                                 <span class="material-icons" style="font-size: 28px;">volume_off</span>
