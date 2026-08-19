@@ -1,5 +1,18 @@
 import sys
 import os
+import ctypes
+
+def set_low_priority():
+    """Sets the current process to Below Normal priority class on Windows to prevent CPU/IO hogging."""
+    if os.name == 'nt':
+        try:
+            # BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            ctypes.windll.kernel32.SetPriorityClass(handle, 0x00004000)
+        except Exception:
+            pass
+
+set_low_priority()
 
 # Monkeypatch platform to bypass buggy Windows WMI service hangs in supabase-py / platform.system()
 import platform
@@ -41,9 +54,68 @@ from supabase import create_client
 import uuid
 import datetime
 from dotenv import load_dotenv
-from gcp_gemini_client import call_gemini, get_access_token
+from gcp_gemini_client import call_gemini as raw_call_gemini, get_access_token, GeminiAuthError
 import shutil
 import base64
+
+def call_gemini(prompt, system_instruction=None, **kwargs):
+    """Wrapper that catches critical billing/auth errors and sends email alerts with a 1-hour cooldown."""
+    try:
+        return raw_call_gemini(prompt, system_instruction=system_instruction, **kwargs)
+    except GeminiAuthError as e:
+        log_msg(f"◈ [AI ALERT] Critical Gemini failure: {e}")
+        
+        # Check cooldown to prevent email spam (1 hour = 3600s)
+        cooldown_file = os.path.join(base_dir, ".alert_cooldown")
+        now = time.time()
+        should_send = True
+        if os.path.exists(cooldown_file):
+            try:
+                with open(cooldown_file, "r") as f:
+                    last_sent = float(f.read().strip())
+                if now - last_sent < 3600:
+                    should_send = False
+            except:
+                pass
+        
+        if should_send:
+            try:
+                with open(cooldown_file, "w") as f:
+                    f.write(str(now))
+            except Exception as w_err:
+                log_msg(f"[AI ALERT ERROR] Failed to write cooldown timestamp: {w_err}")
+                
+            try:
+                send_email_alert(
+                    "◈ CRITICAL: Gemini Engine Failure (Auth/Billing)",
+                    f"""
+                    The Gemini AI client encountered a critical authentication or billing outage:
+                    <br><br>
+                    <strong>Error Details:</strong> {e}
+                    <br><br>
+                    Please check your Google Cloud Console billing status or run <code>python setup_gcp_credentials.py</code> to re-authenticate.
+                    """
+                )
+            except Exception as alert_err:
+                log_msg(f"[AI ALERT ERROR] Failed to send email alert: {alert_err}")
+        else:
+            log_msg("◈ [AI ALERT] Alert suppressed due to 1-hour email cooldown.")
+            
+        raise e
+
+# Threading lock for FTP studio_heartbeat.json writes to prevent corruption
+ftp_lock = threading.Lock()
+
+# Concurrency & Resource Guards
+active_checks = set()
+active_checks_lock = threading.Lock()
+ffmpeg_semaphore = threading.BoundedSemaphore(2)
+
+def run_ffmpeg(cmd, **kwargs):
+    """Executes FFmpeg safely under a global semaphore to cap resource usage."""
+    with ffmpeg_semaphore:
+        return subprocess.run(cmd, **kwargs)
+
 
 # Load environment variables with absolute path
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,7 +123,7 @@ load_dotenv(os.path.join(base_dir, ".env"))
 
 # --- CONFIGURATION ---
 URL = os.environ.get("SUPABASE_URL")
-KEY = os.environ.get("SUPABASE_KEY")
+KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
 BUFFER_TOKEN = os.environ.get("BUFFER_ACCESS_TOKEN")
 BUFFER_PROFILE_ID_MAIN = os.environ.get("BUFFER_PROFILE_ID")
 BUFFER_PROFILE_ID_LANNA = os.environ.get("BUFFER_PROFILE_ID_LANNA")
@@ -82,11 +154,12 @@ LOCK_PATH = os.path.join(BASE_DIR, "heartbeat.lock")
 
 # DYNAMIC WATCH PATH: Monitor the parent of the current script location
 WATCH_PATH = os.path.dirname(BASE_DIR)
-IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN", "CaptureOne", "Premiere Pro", "FL Studio", "Dr Drive Podcast", "Lens FX 1 SAMPLE"]
+IGNORE_FOLDERS = ["activity_feed", "node_modules", ".git", "Auto-Save", "Adobe Premiere Pro Auto-Save", "RECYCLE.BIN", "CaptureOne", "Premiere Pro", "FL Studio", "Dr Drive Podcast", "Lens FX 1 SAMPLE", "MEMORIES"]
 IGNORE_FILES = [
     "heartbeat.log", "heartbeat.lock", "heartbeat.py", "test_sync.py", "temp.jpg", "last_log.txt", "log_tail_v2.txt",
     ".tmp", ".m4v", ".aac", ".prsl", "._00_", "placeholder", "clip_", "audio_pulse_", "lyrics_",
-    ".pek", ".cfa", ".ims", ".re", "_AME", ".crdownload", ".part", ".log", ".prmdc"
+    ".pek", ".cfa", ".ims", ".re", "_AME", ".crdownload", ".part", ".log", ".prmdc",
+    "stephen_", "flova_", "_sprite", "avatar", "character"
 ]
 COOLDOWN_SECONDS = 5  # Reduced cooldown
 DEBOUNCE_SECONDS = 5.0 # Increased responsiveness
@@ -189,7 +262,7 @@ def generate_and_upload_thumbnail(video_path, local_only=False):
         temp_thumb = f"thumb_temp_{unique_id}.jpg"
         # Extract thumbnail at 2 seconds
         cmd = ['ffmpeg', '-y', '-i', video_path, '-ss', '00:00:02', '-vframes', '1', temp_thumb]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         
         if os.path.exists(temp_thumb):
             if local_only:
@@ -274,6 +347,8 @@ def upload_to_supabase(file_path, folder="pulses"):
 
 def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creative", software="Neural Engine", channel_id="INNOV8", is_social=False, is_milestone=True, quote=""):
     """Unified helper to push heartbeat pulses to both 'studio_heartbeat' and 'feed' tables."""
+    if not quote:
+        quote = get_random_quote()
     status_text = "Social active." if is_social else "Neural link active."
     heartbeat_data = {
         "project_name": project_name,
@@ -316,6 +391,8 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
 
 def _push_heartbeat_json_to_ftp(new_pulse=None):
     """Fetches latest 20 heartbeat pulses and pushes as studio_heartbeat.json to FTP."""
+    global ftp_lock
+    ftp_lock.acquire()
     ftp = None
     try:
         import ftplib, io, json as _json, time
@@ -434,16 +511,36 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
                     
                     # 1. Project-level check (5-minute window for rapid revisions)
                     if -30 <= time_diff <= 300:
-                        log_msg(f"◈ [DEDUPLICATION] Removing recent pulse (ID {p.get('id')}) for project '{p_project}' due to 5-min project-level revision rule.")
-                        continue
+                        # Extract asset URLs to check if they are distinct media creations
+                        new_parts = new_mood_tag.split("|")
+                        new_url = new_parts[2] if len(new_parts) > 2 else ""
+                        p_parts = (p.get("mood_tag") or "").split("|")
+                        p_url = p_parts[2] if len(p_parts) > 2 else ""
+                        
+                        is_media = lambda u: any(u.lower().split("?")[0].endswith(ext) for ext in [".mp4", ".mov", ".png", ".jpg", ".jpeg", ".gif"])
+                        if new_url and p_url and new_url != p_url and (is_media(new_url) or is_media(p_url)):
+                            # Bypass project-level deduplication for distinct media assets
+                            pass
+                        else:
+                            log_msg(f"◈ [DEDUPLICATION] Removing recent pulse (ID {p.get('id')}) for project '{p_project}' due to 5-min project-level revision rule.")
+                            continue
                         
                     # 2. Media-level check (15-minute window for identical files/UUID renders)
                     if -30 <= time_diff <= 900:
                         p_mood_tag = p.get("mood_tag") or ""
                         p_norm_media = normalize_media_name(p_mood_tag)
                         if new_norm_media and p_norm_media and new_norm_media == p_norm_media:
-                            log_msg(f"◈ [DEDUPLICATION] Removing recent pulse (ID {p.get('id')}) for project '{p_project}' due to 15-min media-level rule (media: '{new_norm_media}').")
-                            continue
+                            new_parts = new_mood_tag.split("|")
+                            new_url = new_parts[2] if len(new_parts) > 2 else ""
+                            p_parts = p_mood_tag.split("|")
+                            p_url = p_parts[2] if len(p_parts) > 2 else ""
+                            is_media = lambda u: any(u.lower().split("?")[0].endswith(ext) for ext in [".mp4", ".mov", ".png", ".jpg", ".jpeg", ".gif"])
+                            if new_url and p_url and new_url != p_url and (is_media(new_url) or is_media(p_url)):
+                                # Bypass media-level deduplication for distinct media assets
+                                pass
+                            else:
+                                log_msg(f"◈ [DEDUPLICATION] Removing recent pulse (ID {p.get('id')}) for project '{p_project}' due to 15-min media-level rule (media: '{new_norm_media}').")
+                                continue
                             
                     filtered_real_pulses.append(p)
                 
@@ -478,6 +575,7 @@ def _push_heartbeat_json_to_ftp(new_pulse=None):
                     ftp.close()
                 except Exception:
                     pass
+        ftp_lock.release()
 
 def get_project_name(file_path):
     """Extract project name from path (e.g., .../DFP/Dr Drive Podcast/ -> Dr Drive)."""
@@ -502,7 +600,7 @@ def get_project_name(file_path):
     except:
         return "Studio Project"
 
-def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_type="REEL", bypass_quota=False, platform="instagram", location_name=None):
+def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_type="REEL", bypass_quota=False, platform="instagram", location_name=None, scheduled_at=None, raw_caption=False):
     if not profile_id:
         log_msg("Buffer Profile ID missing. Skipping broadcast.")
         return
@@ -528,9 +626,7 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
     """
     
     # Prepare Assets according to Buffer GraphQL Schema
-    assets_payload = {}
-    images = []
-    videos = []
+    assets_payload = []
     
     if asset_urls:
         if isinstance(asset_urls, str): asset_urls = [{"url": asset_urls}]
@@ -543,43 +639,41 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
                 log_msg("◈ [BUFFER] Asset URL is missing. Skipping this item.")
                 continue
             
-            # YouTube conversion: If it's an image and platform is youtube, we need to convert it
-            # But wait, this is a URL. We need the local file path to convert.
-            # Actually, it's better to handle this BEFORE calling broadcast_to_buffer if possible.
-            # But for robustness, I'll add a check here.
-            
             is_vid = a_url.lower().endswith(('.mp4', '.mov'))
             if is_vid:
-                videos.append({
-                    "url": a_url, 
-                    "thumbnailUrl": a_thumb if a_thumb else f"{a_url}?v=thumb"
+                assets_payload.append({
+                    "video": {
+                        "url": a_url
+                    }
                 })
             else:
                 if platform == "youtube":
                     log_msg("◈ [BUFFER] YouTube does not support images. Skipping this asset.")
                     continue
-                images.append({"url": a_url})
+                assets_payload.append({"image": {"url": a_url}})
     
-    if images: assets_payload["images"] = images
-    if videos: assets_payload["videos"] = videos
     
     if not assets_payload:
         log_msg("No assets for Buffer (or filtered out). Skipping.")
         return False
 
-    # Select hashtags based on content
-    tags = " #StudioPulse #Innov8Labs #CreativeProcess #NeuralLink"
-    if post_type == "GRID" and "MEMORY" in text:
-        tags = " #StudioPulse #Memories #Innov8Labs #BehindTheScenes"
-    elif is_video: 
-        tags += " #Reel #Production"
-    else: 
-        tags += " #StudioVision #BehindTheScenes"
+    # raw_caption=True means the caller already produced a finished, human caption
+    # (e.g. refill_buffer.py via caption_voice) — send it verbatim, no robotic wrapper.
+    if raw_caption:
+        description = text
+    else:
+        # Studio-feed styling (intentionally robotic — powers feed.in-no-v8.com)
+        tags = " #StudioPulse #Innov8Labs #CreativeProcess #NeuralLink"
+        if post_type == "GRID" and "MEMORY" in text:
+            tags = " #StudioPulse #Memories #Innov8Labs #BehindTheScenes"
+        elif is_video:
+            tags += " #Reel #Production"
+        else:
+            tags += " #StudioVision #BehindTheScenes"
 
-    # Neural Branding Description
-    header = "◈ STUDIO MEMORY ◈" if "MEMORY" in text else "◈ STUDIO BROADCAST ◈"
-    loc_text = location_name if location_name else "INNOV8 Labs (Lanna, TH)"
-    description = f"{header}\n\n{text}\n\n📍 {loc_text}\n\n{tags}"
+        header = "◈ STUDIO MEMORY ◈" if "MEMORY" in text else "◈ STUDIO BROADCAST ◈"
+        loc_text = location_name if location_name else "INNOV8 Labs (Lanna, TH)"
+        description = f"{header}\n\n{text}\n\n📍 {loc_text}\n\n{tags}"
 
     # --- 2. BUILD PAYLOAD ---
     metadata = {}
@@ -592,23 +686,41 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
             }
         }
     else:
+        is_story = (post_type == "STORY")
         metadata = {
             "instagram": {
-                "type": "post" if post_type == "GRID" else ("reel" if is_video else "story"),
-                "shouldShareToFeed": True
+                "type": "story" if is_story else ("post" if post_type == "GRID" else "reel"),
+                "shouldShareToFeed": not is_story
             }
         }
 
-    variables = {
-        "input": {
-            "text": description,
-            "channelId": profile_id,
-            "schedulingType": "automatic",
-            "mode": "addToQueue",
-            "assets": assets_payload,
-            "metadata": metadata
+    if scheduled_at:
+        # Convert timestamp to ISO 8601 Z format
+        dt = datetime.datetime.utcfromtimestamp(float(scheduled_at))
+        due_at_str = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        variables = {
+            "input": {
+                "text": description,
+                "channelId": profile_id,
+                "schedulingType": "automatic",
+                "mode": "customScheduled",
+                "dueAt": due_at_str,
+                "assets": assets_payload,
+                "metadata": metadata
+            }
         }
-    }
+    else:
+        variables = {
+            "input": {
+                "text": description,
+                "channelId": profile_id,
+                "schedulingType": "automatic",
+                "mode": "addToQueue",
+                "assets": assets_payload,
+                "metadata": metadata
+            }
+        }
     
     log_msg(f"◈ [BUFFER] Dispatching {post_type} payload for {profile_id[-4:]}...")
     
@@ -619,43 +731,61 @@ def broadcast_to_buffer(text, profile_id, asset_urls=None, is_video=False, post_
     }
     
     try:
-        response = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers, timeout=NETWORK_TIMEOUT)
-        if response.status_code == 200:
-            data = response.json()
+        max_retries = 3
+        for attempt in range(max_retries):
+            response = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers, timeout=NETWORK_TIMEOUT)
             
-            # Check for root-level GraphQL errors
-            if "errors" in data:
-                err_msg = str(data["errors"])
-                if 'match the channel service "youtube"' in err_msg and platform != "youtube":
-                    log_msg("◈ [BUFFER] Platform mismatch detected in root errors. Retrying as YouTube...")
-                    return broadcast_to_buffer(text, profile_id, asset_urls, is_video, post_type, bypass_quota, platform="youtube")
-                log_msg(f"Buffer GraphQL Error: {data['errors']}")
-                return False
-
-            # Check for logical errors in the mutation response
-            create_post_res = data.get('data', {}).get('createPost', {})
-            if "message" in create_post_res:
-                err_msg = create_post_res["message"]
-                if 'match the channel service "youtube"' in err_msg and platform != "youtube":
-                    log_msg("◈ [BUFFER] Platform mismatch detected in mutation response. Retrying as YouTube...")
-                    return broadcast_to_buffer(text, profile_id, asset_urls, is_video, post_type, bypass_quota, platform="youtube")
-                log_msg(f"Buffer Mutation Error: {err_msg}")
-                return False
-            
-            try:
-                post_id = create_post_res.get('post', {}).get('id')
-                if post_id:
-                    log_msg(f"🚀 Buffer Success! Post created with ID: {post_id} on channel {profile_id}")
-                    return True
-                else:
-                    log_msg(f"Buffer Response Data (No ID): {data}")
+            if response.status_code in [502, 503, 504]:
+                log_msg(f"◈ [BUFFER] HTTP {response.status_code}. Retrying in 10s... ({attempt+1}/{max_retries})")
+                time.sleep(10)
+                continue
+                
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check for root-level GraphQL errors
+                if "errors" in data:
+                    err_msg = str(data["errors"])
+                    if 'match the channel service "youtube"' in err_msg and platform != "youtube":
+                        log_msg("◈ [BUFFER] Platform mismatch detected in root errors. Retrying as YouTube...")
+                        return broadcast_to_buffer(text, profile_id, asset_urls, is_video, post_type, bypass_quota, platform="youtube")
+                    log_msg(f"Buffer GraphQL Error: {data['errors']}")
                     return False
-            except Exception as e:
-                log_msg(f"Error parsing Buffer success response: {e}")
+
+                # Check for logical errors in the mutation response
+                create_post_res = data.get('data', {}).get('createPost', {})
+                if "message" in create_post_res:
+                    err_msg = create_post_res["message"]
+                    if 'match the channel service "youtube"' in err_msg and platform != "youtube":
+                        log_msg("◈ [BUFFER] Platform mismatch detected in mutation response. Retrying as YouTube...")
+                        return broadcast_to_buffer(text, profile_id, asset_urls, is_video, post_type, bypass_quota, platform="youtube")
+                    log_msg(f"Buffer Mutation Error: {err_msg}")
+                    try:
+                        log_msg(f"◈ [BUFFER DEBUG] post_type={post_type} is_video={is_video} platform={platform}")
+                        log_msg(f"◈ [BUFFER DEBUG] metadata={json.dumps(metadata)}")
+                        log_msg(f"◈ [BUFFER DEBUG] assets={json.dumps(assets_payload)[:500]}")
+                        log_msg(f"◈ [BUFFER DEBUG] full_response={json.dumps(data)[:1200]}")
+                    except Exception as _de:
+                        log_msg(f"◈ [BUFFER DEBUG] serialize fail: {_de}")
+                    return False
+                
+                try:
+                    post_id = create_post_res.get('post', {}).get('id')
+                    if post_id:
+                        log_msg(f"🚀 Buffer Success! Post created with ID: {post_id} on channel {profile_id}")
+                        return True
+                    else:
+                        log_msg(f"Buffer Response Data (No ID): {data}")
+                        return False
+                except Exception as e:
+                    log_msg(f"Error parsing Buffer success response: {e}")
+                    return False
+            else:
+                log_msg(f"Buffer HTTP error: {response.status_code} - {response.text}")
                 return False
-        else:
-            log_msg(f"Buffer HTTP error: {response.status_code} - {response.text}")
-            return False
+                
+        log_msg("◈ [BUFFER] Max retries exhausted.")
+        return False
     except Exception as e:
         log_msg(f"Buffer broadcast script error: {e}")
         return False
@@ -811,7 +941,7 @@ def convert_image_to_video(image_path):
             '-vf', "scale='if(gt(iw,ih),1080,-2)':'if(gt(iw,ih),-2,1080)',pad=1080:1080:(1080-iw)/2:(1080-ih)/2:black,format=yuv420p",
             output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[IMG->VID ERROR] {e}")
@@ -843,7 +973,7 @@ def format_video_vertical(input_path):
             '-c:a', 'aac', '-b:a', '128k', # Ensure audio is AAC for social
             output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[VERTICAL CONVERSION ERROR] {e}")
@@ -855,52 +985,51 @@ class HeartbeatHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         if event.is_directory: return
-        path = event.src_path.lower()
-        basename = os.path.basename(path)
-        
-        # IRON SEAL: Global Ignore Checks
-        if any(folder.lower() in path for folder in IGNORE_FOLDERS): return
-        if any(ign.lower() in basename for ign in IGNORE_FILES): return
-        
-        ext = os.path.splitext(path)[1].lower().strip()
-        if ext in IGNORE_FILES or ".git" in path:
-            return
-            
-        log_msg(f"◈ [WATCHER] Change Detected: {basename}")
-        self.process_event(event)
-        
+        self.trigger_async_event(event, "Change Detected")
+
     def on_created(self, event):
         if event.is_directory: return
-        path = event.src_path.lower()
-        basename = os.path.basename(path)
-
-        # IRON SEAL: Global Ignore Checks
-        if any(folder.lower() in path for folder in IGNORE_FOLDERS): return
-        if any(ign.lower() in basename for ign in IGNORE_FILES): return
-
-        ext = os.path.splitext(path)[1].lower().strip()
-        if ext in IGNORE_FILES or ".git" in path:
-            return
-        
-        log_msg(f"◈ [WATCHER] Created: {basename}")
-        self.process_event(event)
+        self.trigger_async_event(event, "Created")
 
     def on_moved(self, event):
         if event.is_directory: return
-        path = event.dest_path.lower()
-        basename = os.path.basename(path)
+        self.trigger_async_event(event, "Moved", is_move=True)
 
-        # IRON SEAL: Global Ignore Checks
-        if any(folder.lower() in path for folder in IGNORE_FOLDERS): return
-        if any(ign.lower() in basename for ign in IGNORE_FILES): return
-
-        ext = os.path.splitext(path)[1].lower().strip()
-        if ext in IGNORE_FILES or ".git" in path:
-            return
+    def trigger_async_event(self, event, action_name, is_move=False):
+        path = event.dest_path if (is_move and hasattr(event, 'dest_path') and event.dest_path) else event.src_path
+        if not path: return
         
-        log_msg(f"[WATCHER DEBUG] Event Moved: {event.dest_path}")
-        log_msg(f"[WATCHER] Moved: {basename}")
-        self.process_event(event)
+        basename = os.path.basename(path)
+        
+        # IRON SEAL: Global Ignore Checks
+        if any(folder.lower() in path.lower() for folder in IGNORE_FOLDERS): return
+        if any(ign.lower() in basename.lower() for ign in IGNORE_FILES): return
+        
+        ext = os.path.splitext(path)[1].lower().strip()
+        if ext in IGNORE_FILES or ".git" in path.lower():
+            return
+            
+        log_msg(f"◈ [WATCHER] {action_name}: {basename}")
+        
+        # Normalize path to ensure exact matches (case-insensitive on Windows)
+        abs_path = os.path.abspath(path).lower()
+        
+        # Deduplicate active stability checks
+        with active_checks_lock:
+            if abs_path in active_checks:
+                log_msg(f"◈ [WATCHER DEBUG] Event suppressed for active check: {basename}")
+                return
+            active_checks.add(abs_path)
+            
+        # Dispatch processing to a background daemon thread
+        def run_event_async():
+            try:
+                self.process_event(event)
+            finally:
+                with active_checks_lock:
+                    active_checks.discard(abs_path)
+                    
+        threading.Thread(target=run_event_async, daemon=True).start()
 
     def process_event(self, event):
         try:
@@ -987,8 +1116,8 @@ class HeartbeatHandler(FileSystemEventHandler):
                         log_msg(f"◈ [WATCHER] Busy: {os.path.basename(file_path)} (Locked by another process)")
                         return
 
-                # 3. SIZE STABILITY CHECK (Only for media assets)
-                if is_media:
+                # 3. SIZE STABILITY CHECK (Only for media assets, only in real-time)
+                if is_media and self.is_primed:
                     path_parts = file_path.replace("\\", "/").split("/")
                     if "LANNA" in [p.upper() for p in path_parts]:
                         # CAROUSEL CHECK: It's a carousel ONLY if it's in a SUBFOLDER of LANNA
@@ -1112,6 +1241,21 @@ class HeartbeatHandler(FileSystemEventHandler):
         try:
             basename = os.path.basename(file_path)
             ext = os.path.splitext(file_path)[1].lower().strip()
+            
+            # --- SCREENSHOT CAPTURE FOR PROJECT FILES ---
+            screenshot_temp_file = None
+            is_project_file = ext in ['.prproj', '.aep', '.psd', '.flp'] or len(ext) == 0
+            if is_project_file:
+                log_msg(f"◈ [HEARTBEAT] Project file save detected ({basename}). Capturing workstation screenshot...")
+                screenshot_temp_file = capture_screenshot()
+                if screenshot_temp_file and os.path.exists(screenshot_temp_file):
+                    file_path = screenshot_temp_file
+                    basename = os.path.basename(screenshot_temp_file)
+                    ext = ".jpg"
+                    log_msg(f"◈ [HEARTBEAT] Screenshot captured successfully: {screenshot_temp_file}")
+                else:
+                    log_msg(f"◈ [HEARTBEAT] Screenshot capture failed or skipped. Falling back to project file.")
+            
             is_vid = ext in [".mp4", ".mov"]
             
             # 1. SMART ROUTING & ORIENTATION CHECK
@@ -1138,10 +1282,15 @@ class HeartbeatHandler(FileSystemEventHandler):
                     channel_id = "INNOV8"
 
             # Upload to Supabase first so both portal and feed have the asset
-            asset_url = upload_to_supabase(file_path)
-            if not asset_url:
-                log_msg(f"◈ [HEARTBEAT] Failed to upload {basename} to Supabase. Skipping further dispatch.")
-                return
+            if is_project_file and not screenshot_temp_file:
+                asset_url = "https://in-no-v8.world/sample.png"
+                log_msg(f"◈ [HEARTBEAT] Screenshot failed/skipped. Using default fallback image: {asset_url}")
+            else:
+                optimized_file = optimize_media(file_path)
+                asset_url = upload_to_supabase(optimized_file)
+                if not asset_url:
+                    log_msg(f"◈ [HEARTBEAT] Failed to upload {basename} to Supabase. Skipping further dispatch.")
+                    return
 
             # Update cache with combined key only AFTER successful upload!
             try:
@@ -1152,6 +1301,42 @@ class HeartbeatHandler(FileSystemEventHandler):
                 save_cache()
             except Exception as e:
                 log_msg(f"◈ [CACHE ERROR] Failed to save cache: {e}")
+
+            # --- CONDITIONAL FEED-PULSE GUARD ---
+            # If the file is recursive (depth > 3 relative to WATCH_PATH) or is in an automated directory,
+            # we upload it to the FTP server (done above) but bypass the live feed pulse,
+            # UNLESS it is a fresh project file save (e.g. .psd, .flp, .prproj with mtime <= 60s).
+            # All other assets in these directories (like media files .jpg, .mp3, .wav, .mp4, etc.)
+            # are vaulted to FTP but strictly bypass the feed.
+            
+            # 1. Calculate depth relative to WATCH_PATH
+            depth = 1
+            try:
+                rel_path = os.path.relpath(file_path, WATCH_PATH)
+                depth = len(rel_path.replace("\\", "/").split("/"))
+            except Exception:
+                pass
+            is_recursive = depth > 3
+            
+            # 2. Check if it's in an automated directory
+            path_upper = file_path.upper()
+            is_automated = any(x in path_upper for x in ["MEMORIES", "SOCIAL", "ARCHIVE", "SIFTER"])
+            
+            # 3. Check if it is a fresh project file save or a fresh media render/export
+            is_fresh_project_save = False
+            if ext in [".psd", ".flp", ".prproj", ".mp4", ".mov", ".wav", ".mp3"]:
+                try:
+                    mtime = os.path.getmtime(file_path)
+                    if (time.time() - mtime) <= 60.0:
+                        is_fresh_project_save = True
+                except Exception:
+                    pass
+            
+            # If recursive or automated, block pulsing unless it's a fresh project file save
+            if is_recursive or is_automated:
+                if not is_fresh_project_save:
+                    log_msg(f"◈ [FTP VAULTED ONLY] Recursive/Automated file {basename} uploaded to FTP server ({asset_url}), but live web feed pulse bypassed (Reason: Not a fresh project file save).")
+                    return
 
             # Check if this asset is inside a 'PUBLISH' subfolder to qualify for social media
             path_parts = file_path.replace("\\", "/").upper().split("/")
@@ -1185,11 +1370,11 @@ class HeartbeatHandler(FileSystemEventHandler):
                 social_thumb = None
                 if is_vid:
                     if not is_vert:
-                        formatted = format_video_vertical(file_path)
-                        if formatted != file_path:
+                        formatted = format_video_vertical(optimized_file)
+                        if formatted != optimized_file:
                             asset_url = upload_to_supabase(formatted, "formatted")
                             os.remove(formatted)
-                    social_thumb = generate_and_upload_thumbnail(file_path)
+                    social_thumb = generate_and_upload_thumbnail(optimized_file)
 
                 # Determine CTA based on channel
                 cta = ""
@@ -1234,6 +1419,19 @@ class HeartbeatHandler(FileSystemEventHandler):
             import traceback
             err_msg = traceback.format_exc()
             log_msg(f"◈ [CRITICAL PROCESS ERROR] {type(e).__name__}: {e}\n{err_msg}")
+        finally:
+            try:
+                opt_f = locals().get('optimized_file')
+                if opt_f and opt_f != file_path and os.path.exists(opt_f):
+                    os.remove(opt_f)
+            except Exception as ex:
+                log_msg(f"◈ [CLEANUP ERROR] Failed to remove temporary optimized file: {ex}")
+            try:
+                scr_f = locals().get('screenshot_temp_file')
+                if scr_f and os.path.exists(scr_f):
+                    os.remove(scr_f)
+            except Exception as ex:
+                log_msg(f"◈ [CLEANUP ERROR] Failed to remove temporary screenshot file: {ex}")
 
     def dispatch_carousel(self, folder_path):
         """Processes a folder as a single carousel post."""
@@ -1255,13 +1453,11 @@ class HeartbeatHandler(FileSystemEventHandler):
 
             last_carousel_date_str = quota_data.get("last_lanna_carousel_date")
             can_send = True
-            if quota_data.get("weekly_lanna_carousel_sent") == current_week:
-                can_send = False
-                log_msg(f"◈ [QUOTA] Weekly Lanna Carousel limit already reached for week {current_week}. Moving {os.path.basename(folder_path)} to Pending.")
-            elif last_carousel_date_str:
+            
+            if last_carousel_date_str:
                 last_date = datetime.datetime.strptime(last_carousel_date_str, '%Y-%m-%d')
                 days_since = (datetime.datetime.now() - last_date).days
-                if days_since < 2:
+                if days_since < 4:
                     can_send = False
                     log_msg(f"◈ [QUOTA] Lanna Carousel spacing not met ({days_since} days since last). Moving {os.path.basename(folder_path)} to Pending.")
             
@@ -1282,9 +1478,9 @@ class HeartbeatHandler(FileSystemEventHandler):
             try:
                 with open(QUOTA_FILE, 'r') as f:
                     q_check = json.load(f)
-                if q_check.get("weekly_lanna_carousel_sent") == current_week:
-                    log_msg(f"◈ [QUOTA] Weekly Lanna Carousel filled during wait. Skipping {os.path.basename(folder_path)}")
-                    return
+                # if q_check.get("weekly_lanna_carousel_sent") == current_week:
+                #     log_msg(f"◈ [QUOTA] Weekly Lanna Carousel filled during wait. Skipping {os.path.basename(folder_path)}")
+                #     return
             except: pass
 
             # 2. Gather All Media
@@ -1320,13 +1516,18 @@ class HeartbeatHandler(FileSystemEventHandler):
                 #         temp_files.append(optimized_vid)
                 #         is_vid = True
                 
-                url = upload_to_supabase(active_file, "pulses")
+                optimized_file = optimize_media(active_file)
+                url = upload_to_supabase(optimized_file, "pulses")
                 if url:
                     item = {"url": url}
                     if is_vid:
-                        thumb = generate_and_upload_thumbnail(active_file)
+                        thumb = generate_and_upload_thumbnail(optimized_file)
                         if thumb: item["thumbnail"] = thumb
                     asset_data.append(item)
+                
+                if optimized_file != active_file and os.path.exists(optimized_file):
+                    try: os.remove(optimized_file)
+                    except: pass
             
             if not asset_data: return
             
@@ -1477,7 +1678,7 @@ def generate_blueprint(input_image):
             "[bg][fg]overlay=format=auto[out]",
             '-map', '[out]', '-frames:v', '1', output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[BLUEPRINT ERROR] {e}")
@@ -1573,7 +1774,7 @@ def generate_audio_visualizer(audio_path, full_length=False, is_song=True):
         ]
         
         log_msg(f">>> [RENDER] Executing FFmpeg for Music Visualizer (Duration: {t}s)...")
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         
         # Cleanup temp srt
         if os.path.exists(srt_file): 
@@ -1618,7 +1819,7 @@ def extract_random_clip(video_path):
             '-movflags', '+faststart',
             '-c:a', 'aac', '-b:a', '96k', output_file
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         return output_file
     except Exception as e:
         log_msg(f"[CLIP ERROR] {e}")
@@ -1636,7 +1837,7 @@ def generate_visual_caption(file_path):
         if is_vid:
             temp_img = f"ai_temp_{int(time.time())}.jpg"
             cmd = ['ffmpeg', '-y', '-i', file_path, '-ss', '00:00:01', '-vframes', '1', temp_img]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+            run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
             
         # 2. Encode to Base64
         with open(temp_img, "rb") as image_file:
@@ -1663,40 +1864,58 @@ def generate_visual_caption(file_path):
         return None
 
 def optimize_media(file_path):
-    """Optimizes media for web/social (compression, resizing, transcoding)."""
+    """Optimizes media for web/social (compression, resizing, transcoding, capping)."""
     try:
         ext = os.path.splitext(file_path)[1].lower().strip()
         is_vid = ext in ['.mp4', '.mov']
         is_img = ext in ['.jpg', '.jpeg', '.png']
+        is_aud = ext in ['.wav', '.mp3', '.ogg', '.m4a', '.aac', '.flac']
         
-        if not is_vid and not is_img: return file_path
+        if not is_vid and not is_img and not is_aud: return file_path
         
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        output_file = os.path.join(base_dir, f"optimized_{int(time.time())}{ext if is_vid else '.jpg'}")
+        if is_vid:
+            out_ext = ext
+        elif is_aud:
+            out_ext = '.mp3'
+        else:
+            out_ext = '.jpg'
+        orig_name = os.path.splitext(os.path.basename(file_path))[0]
+        output_file = os.path.join(base_dir, f"opt_{int(time.time())}_{orig_name}{out_ext}")
         
         if is_vid:
-            log_msg(f">>> [OPTIMIZE] Transcoding video for web: {os.path.basename(file_path)}")
-            # Resize to 1080p max, CRF 28 (Good balance), AAC Audio
-            # We use force_original_aspect_ratio to maintain vertical/square/etc
+            log_msg(f">>> [OPTIMIZE] Transcoding video for web (capped to 10s): {os.path.basename(file_path)}")
+            # Resize to 720p max, CRF 30 (Highly compressed), AAC Audio 96k, cap at 10 seconds
             cmd = [
                 'ffmpeg', '-y', '-i', file_path,
-                '-vf', "scale='min(1080,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease,pad='ceil(iw/2)*2':'ceil(ih/2)*2'",
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '28',
-                '-c:a', 'aac', '-b:a', '128k',
+                '-t', '10',
+                '-vf', "scale='min(720,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,pad='ceil(iw/2)*2':'ceil(ih/2)*2'",
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '30',
+                '-c:a', 'aac', '-b:a', '96k',
                 '-movflags', '+faststart',
                 output_file
             ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
-        else:
-            log_msg(f">>> [OPTIMIZE] Compressing image: {os.path.basename(file_path)}")
-            # Resize to 1920px max, 80% quality
+            run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        elif is_aud:
+            log_msg(f">>> [OPTIMIZE] Transcoding audio for web (capped to 15s): {os.path.basename(file_path)}")
+            # Clip to 15s max, transcode to 96kbps MP3
             cmd = [
                 'ffmpeg', '-y', '-i', file_path,
-                '-vf', "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease",
-                '-q:v', '4', # Roughly 80% quality
+                '-t', '15',
+                '-c:a', 'libmp3lame', '-b:a', '96k',
                 output_file
             ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+            run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        else:
+            log_msg(f">>> [OPTIMIZE] Compressing image: {os.path.basename(file_path)}")
+            # Resize to 1080px max, ~70% quality (q:v 5)
+            cmd = [
+                'ffmpeg', '-y', '-i', file_path,
+                '-vf', "scale='min(1080,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
+                '-q:v', '5', # Roughly 70% quality
+                output_file
+            ]
+            run_ffmpeg(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
             
         if os.path.exists(output_file):
             return output_file
@@ -1761,10 +1980,13 @@ def capture_screenshot():
 
 # --- DAILY MAINTENANCE TRIGGER ---
 def schedule_cleanup():
-    """Triggers the cleanup_studio.py script every 24 hours."""
+    """Triggers the cleanup_studio.py and cleanup_ftp_pulses.py scripts every 24 hours."""
     try:
         log_msg("◈ [MAINTENANCE] Running daily studio cleanup...")
         subprocess.Popen(["python", "cleanup_studio.py"])
+        
+        log_msg("◈ [MAINTENANCE] Running daily FTP pulses cleanup...")
+        subprocess.Popen(["python", "cleanup_ftp_pulses.py", "delete"])
     except Exception as e:
         log_msg(f"[MAINTENANCE ERROR] {e}")
     

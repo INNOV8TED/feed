@@ -1559,35 +1559,33 @@
         async function loadInitial() {
             let pulses = [];
 
-            // 1. Try to load initial telemetry from FTP static JSON snapshot first (RLS bypass)
+            // 1. Query Supabase directly for latest active pulses
             try {
-                const res = await fetch('https://in-no-v8.world/vault/studio_heartbeat.json?t=' + Date.now());
-                const data = await res.json();
+                const { data, error } = await supabaseClient
+                    .from('studio_heartbeat')
+                    .select('*')
+                    .neq('project_name', '[SYSTEM_STATUS]')
+                    .order('created_at', { ascending: false })
+                    .limit(40);
                 if (data && data.length > 0) {
                     pulses = data;
-                    console.log("◈ [FEED] Loaded initial telemetry from FTP JSON fallback. Total items:", pulses.length);
+                    console.log("◈ [FEED] Loaded initial telemetry from Supabase. Total items:", pulses.length);
                 }
             } catch (e) {
-                console.warn("◈ [FEED] FTP JSON fallback unavailable, querying Supabase directly...", e);
+                console.warn("◈ [FEED] Direct Supabase query failed, attempting JSON fallback...", e);
             }
 
-            // 2. Fall back to Supabase query if FTP JSON was empty or failed
+            // 2. Fall back to static JSON snapshot if Supabase returned nothing
             if (!pulses || pulses.length === 0) {
                 try {
-                    const sessionStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-                    const { data, error } = await supabaseClient
-                        .from('studio_heartbeat')
-                        .select('*')
-                        .gt('created_at', sessionStart)
-                        .neq('project_name', '[SYSTEM_STATUS]')
-                        .order('created_at', { ascending: false })
-                        .limit(40);
-                    if (data) {
-                        pulses = data;
-                        console.log("◈ [FEED] Loaded initial telemetry from Supabase. Total items:", pulses.length);
+                    const res = await fetch('https://in-no-v8.world/vault/studio_heartbeat.json?t=' + Date.now());
+                    const data = await res.json();
+                    if (data && data.length > 0) {
+                        pulses = data.filter(p => p.project_name !== '[SYSTEM_STATUS]');
+                        console.log("◈ [FEED] Loaded initial telemetry from JSON fallback. Total items:", pulses.length);
                     }
                 } catch (e) {
-                    console.error("◈ [FEED] Supabase query failed:", e);
+                    console.warn("◈ [FEED] JSON fallback unavailable:", e);
                 }
             }
 
