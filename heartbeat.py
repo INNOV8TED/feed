@@ -2022,7 +2022,15 @@ def process_backlog(handler):
                 log_msg(f"◈ [BACKLOG] Releasing Carousel: {os.path.basename(folder)}")
                 # Move back to LANNA to process naturally
                 dest = os.path.join(WATCH_PATH, "SOCIAL", "LANNA", os.path.basename(folder))
-                if os.path.exists(dest): shutil.rmtree(dest)
+                if os.path.exists(dest):
+                    def _force_rm(func, path, exc):
+                        import stat
+                        try:
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        except Exception:
+                            pass
+                    shutil.rmtree(dest, onerror=_force_rm)
                 shutil.move(folder, dest)
                 handler.dispatch_carousel(dest)
 
