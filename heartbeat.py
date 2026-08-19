@@ -300,8 +300,8 @@ def upload_to_supabase(file_path, folder="pulses"):
             ftp.login(FTP_USER, FTP_PASS)
             ftp.prot_p()
             
-            # Build path: /in-no-v8.world/vault/studio-assets/{folder}
-            remote_dir = f"/in-no-v8.world/vault/studio-assets/{folder}"
+            # Build path: /public_html/studio-assets/{folder}
+            remote_dir = f"/public_html/studio-assets/{folder}"
             
             # Ensure remote directory exists
             parts = remote_dir.split('/')
@@ -323,7 +323,7 @@ def upload_to_supabase(file_path, folder="pulses"):
             ftp.quit()
             ftp = None
             
-            public_url = f"https://in-no-v8.world/vault/studio-assets/{folder}/{filename}"
+            public_url = f"https://in-no-v8.com/studio-assets/{folder}/{filename}"
             log_msg(f"◈ [FTP UPLOAD SUCCESS] {file_path} -> {public_url}")
             return public_url
             
@@ -364,6 +364,7 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
         log_msg(f"◈ [DB SYNC] Pulse synchronized to studio_heartbeat: {project_name} -> {action_label}")
     except Exception as e:
         log_msg(f"!!! [DB SYNC ERROR - studio_heartbeat] {e}")
+        check_feed_health_and_alert(f"Supabase sync failure on studio_heartbeat: {e}")
         
     # 2. Sync to Web Feed (feed)
     try:
@@ -381,6 +382,7 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
         log_msg(f"◈ [DB SYNC] Pulse synchronized to feed: {project_name} -> {action_label}")
     except Exception as e:
         log_msg(f"!!! [DB SYNC ERROR - feed] {e}")
+        check_feed_health_and_alert(f"Supabase sync failure on feed: {e}")
 
     # 3. Push static JSON snapshot to FTP so WORLD portal has zero Supabase egress
     try:
@@ -881,7 +883,7 @@ def send_email_alert(subject, message):
             "subject": subject,
             "html": f"""
             <div style="font-family: sans-serif; background: #050505; color: #fff; padding: 40px; border: 1px solid #00ffaa; border-radius: 8px;">
-                <h1 style="color: #00ffaa; margin-top: 0;">◈ STUDIO SUPPLY ALERT</h1>
+                <h1 style="color: #00ffaa; margin-top: 0;">◈ STUDIO FEED ALERT</h1>
                 <p style="font-size: 1.1em;">{message}</p>
                 <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
                 <p style="font-size: 0.8em; opacity: 0.5;">This is an automated diagnostic from your Studio Pulse engine.</p>
@@ -892,6 +894,40 @@ def send_email_alert(subject, message):
         log_msg(f"◈ [EMAIL] Alert sent to stephen@in-no-v8.com: {subject}")
     except Exception as e:
         log_msg(f"[EMAIL ERROR] {e}")
+
+_last_feed_alert_time = 0
+
+def check_feed_health_and_alert(error_detail=None):
+    """Checks feed health and sends an email alert with a 2-hour cooldown if broken."""
+    global _last_feed_alert_time
+    import urllib.request
+    now = time.time()
+    if (now - _last_feed_alert_time) < 7200:
+        return
+        
+    error_msg = error_detail
+    if not error_msg:
+        try:
+            req = urllib.request.Request("https://feed.in-no-v8.com/", headers={"User-Agent": "Studio-Pulse-Watchdog/1.0"})
+            resp = urllib.request.urlopen(req, timeout=10)
+            if resp.status != 200:
+                error_msg = f"Feed returned HTTP status {resp.status}"
+        except Exception as net_err:
+            error_msg = f"Cannot reach feed.in-no-v8.com: {net_err}"
+            
+    if error_msg:
+        _last_feed_alert_time = now
+        log_msg(f"◈ [FEED HEALTH ALERT] Triggering email alert: {error_msg}")
+        send_email_alert(
+            subject="◈ CRITICAL: Studio Pulse Feed Alert (Service Interrupted)",
+            message=f"""
+            The Studio Pulse live feed encountered an issue and may not be updating:
+            <br><br>
+            <strong>Diagnostic Error:</strong> {error_msg}
+            <br><br>
+            <strong>Quick Fix:</strong> Double-click <code>restart_feed.bat</code> or run <code>python restart_feed.py</code> on your workstation to automatically test credentials, reconnect, and restart the monitoring engine.
+            """
+        )
 
 def generate_visual_caption(image_path):
     """Uses OpenAI Vision to describe the content of a workflow snapshot."""
@@ -1604,7 +1640,7 @@ class HeartbeatHandler(FileSystemEventHandler):
             ftp.login(FTP_USER, FTP_PASS)
             ftp.prot_p()
             
-            remote_dir = "/in-no-v8.world/vault/studio-assets"
+            remote_dir = "/public_html/studio-assets"
             
             # Ensure remote directory exists
             parts = remote_dir.split('/')
@@ -1624,7 +1660,7 @@ class HeartbeatHandler(FileSystemEventHandler):
                 
             ftp.quit()
             
-            public_url = f"https://in-no-v8.world/vault/studio-assets/{filename}"
+            public_url = f"https://in-no-v8.com/studio-assets/{filename}"
             print(f"Uploaded to Studio Assets FTP: {public_url}")
             return public_url
         except Exception as e:
