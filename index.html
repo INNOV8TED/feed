@@ -96,8 +96,9 @@
 
         /* DISTINCT SOCIAL THEME */
         .cinematic-mode .pulse-label {
-            color: var(--accent-color);
-            text-shadow: 0 0 15px var(--accent-color);
+            color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
+            -webkit-text-fill-color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
+            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.5)), 0 2px 10px rgba(0,0,0,0.9) !important;
         }
         .cinematic-mode .pulse-sub-label {
             color: var(--accent-color);
@@ -606,19 +607,18 @@
             box-shadow: 0 0 30px var(--media-glow) !important;
         }
 
-        /* DYNAMIC HEADER GRADIENTS */
+        /* DYNAMIC HEADER COLORS BY CATEGORY */
         .pulse-card .pulse-label {
-            background: linear-gradient(135deg, #ffffff 40%, var(--accent-color) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 5px 15px rgba(0,0,0,0.3); /* Subtitle pop */
+            color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
+            -webkit-text-fill-color: var(--media-accent, var(--accent-color, #00ffaa)) !important;
+            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9);
             display: inline-block;
         }
 
         .pulse-card.media-themed .pulse-label {
-            background: linear-gradient(135deg, #ffffff 40%, var(--media-accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: var(--media-accent, #00ffaa) !important;
+            -webkit-text-fill-color: var(--media-accent, #00ffaa) !important;
+            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9);
         }
 
         .pulse-card.media-themed .project-tag,
@@ -770,12 +770,13 @@
         .pulse-label { 
             font-size: 1.8em; 
             margin: 20px 0; 
-            color: #fff; 
+            color: var(--media-accent, var(--accent-color, #ffffff)); 
             font-weight: 800; 
             max-width: 85%; 
             line-height: 1.1; 
             letter-spacing: -0.5px;
-            text-shadow: 0 5px 15px rgba(0,0,0,0.8); /* TEXT POP */
+            text-transform: uppercase;
+            text-shadow: 0 0 20px var(--media-glow, rgba(0, 255, 170, 0.4)), 0 2px 10px rgba(0,0,0,0.9);
         }
         .pulse-sub-label { 
             font-size: 1.1em; 
