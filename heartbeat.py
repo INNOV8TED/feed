@@ -366,25 +366,7 @@ def insert_pulse_to_supabase(project_name, action_label, asset_url, mood="creati
         log_msg(f"!!! [DB SYNC ERROR - studio_heartbeat] {e}")
         check_feed_health_and_alert(f"Supabase sync failure on studio_heartbeat: {e}")
         
-    # 2. Sync to Web Feed (feed)
-    try:
-        feed_data = {
-            "project_name": project_name,
-            "action_label": action_label,
-            "asset_url": asset_url,
-            "mood": mood,
-            "software": software,
-            "channel_id": channel_id,
-            "is_social": is_social,
-            "timestamp": datetime.datetime.now().astimezone().isoformat()
-        }
-        supabase.table("feed").insert(feed_data).execute()
-        log_msg(f"◈ [DB SYNC] Pulse synchronized to feed: {project_name} -> {action_label}")
-    except Exception as e:
-        log_msg(f"!!! [DB SYNC ERROR - feed] {e}")
-        check_feed_health_and_alert(f"Supabase sync failure on feed: {e}")
-
-    # 3. Push static JSON snapshot to FTP so WORLD portal has zero Supabase egress
+    # 2. Push static JSON snapshot to FTP so WORLD portal has zero Supabase egress
     try:
         import threading as _th
         _th.Thread(target=_push_heartbeat_json_to_ftp, args=(heartbeat_data,), daemon=True).start()
